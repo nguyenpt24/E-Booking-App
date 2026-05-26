@@ -32,12 +32,7 @@ public class AuthService {
             throw new RuntimeException("Email đã được sử dụng trong hệ thống!");
         }
 
-        String assignedRole = request.getRole();
-        if (assignedRole == null || assignedRole.trim().isEmpty()) {
-            assignedRole = "ROLE_CUSTOMER";
-        } else if (!assignedRole.startsWith("ROLE_")) {
-            assignedRole = "ROLE_" + assignedRole.toUpperCase();
-        }
+        String assignedRole = "ROLE_CUSTOMER";
 
         User user = new User(
                 request.getUsername(),

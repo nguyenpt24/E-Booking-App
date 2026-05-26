@@ -5,6 +5,8 @@ D:\Phat Code\E-Booking App\backend\src\main\java\com\etour\booking\scheduler\Boo
 D:\Phat Code\E-Booking App\backend\src\main\java\com\etour\booking\entity\User.java
 D:\Phat Code\E-Booking App\backend\src\main\java\com\etour\booking\entity\Booking.java
 D:\Phat Code\E-Booking App\backend\src\main\java\com\etour\booking\service\BookingService.java
+D:\Phat Code\E-Booking App\backend\src\main\java\com\etour\booking\controller\UserController.java
+D:\Phat Code\E-Booking App\backend\src\main\java\com\etour\booking\dto\UserProfileUpdateDTO.java
 D:\Phat Code\E-Booking App\backend\src\main\java\com\etour\booking\config\SecurityConfig.java
 D:\Phat Code\E-Booking App\backend\src\main\java\com\etour\booking\service\MailService.java
 D:\Phat Code\E-Booking App\backend\src\main\java\com\etour\booking\service\AuthService.java

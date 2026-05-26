@@ -26,6 +26,12 @@ export default function App() {
   // Navigation State: 'home' | 'tours-catalog' | 'login' | 'register' | 'admin-dashboard'
   const [activeTab, setActiveTab] = useState('home');
 
+  // Profile Update States
+  const [profileEmail, setProfileEmail] = useState('');
+  const [profileOldPassword, setProfileOldPassword] = useState('');
+  const [profileNewPassword, setProfileNewPassword] = useState('');
+  const [profileLoading, setProfileLoading] = useState(false);
+
   // Customer Catalog States
   const [tours, setTours] = useState([]);
   const [loadingTours, setLoadingTours] = useState(false);
@@ -131,9 +137,51 @@ export default function App() {
     }
   }, []);
 
+  const fetchUserProfile = async () => {
+    if (!token) return;
+    setProfileLoading(true);
+    try {
+      const res = await axios.get('/users/profile');
+      setProfileEmail(res.data.email);
+    } catch (err) {
+      console.error(err);
+      triggerNotification(err.response?.data?.message || 'Không thể lấy thông tin tài khoản!', 'error');
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    if (!profileOldPassword) {
+      triggerNotification('Vui lòng nhập mật khẩu hiện tại để xác thực!', 'error');
+      return;
+    }
+    setProfileLoading(true);
+    try {
+      const payload = {
+        email: profileEmail,
+        oldPassword: profileOldPassword,
+        newPassword: profileNewPassword
+      };
+      const res = await axios.put('/users/profile', payload);
+      triggerNotification(res.data.message || 'Cập nhật tài khoản thành công!');
+      setProfileOldPassword('');
+      setProfileNewPassword('');
+      setActiveTab('home');
+    } catch (err) {
+      console.error(err);
+      triggerNotification(err.response?.data?.message || 'Cập nhật tài khoản thất bại!', 'error');
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'admin-dashboard') {
       fetchAdminData();
+    } else if (activeTab === 'user-profile') {
+      fetchUserProfile();
     }
   }, [activeTab]);
 
@@ -483,8 +531,15 @@ export default function App() {
 
             {token ? (
               <div className="flex items-center space-x-3">
-                <div className="text-right hidden sm:block">
-                  <span className="block text-xs font-bold text-slate-800">{username}</span>
+                <div 
+                  onClick={() => setActiveTab('user-profile')}
+                  className="text-right hidden sm:block cursor-pointer group"
+                  title="Thông tin tài khoản"
+                >
+                  <span className="block text-xs font-bold text-slate-800 group-hover:text-emerald-600 transition-colors flex items-center justify-end space-x-1">
+                    <span>{username}</span>
+                    <span className="text-[10px] opacity-60 group-hover:opacity-100 transition-opacity">⚙️</span>
+                  </span>
                   <span className="block text-[10px] text-emerald-600 font-semibold">{role === 'ROLE_ADMIN' ? 'Admin Hệ Thống' : 'Khách Hàng'}</span>
                 </div>
                 <button 
@@ -521,7 +576,7 @@ export default function App() {
         {activeTab === 'home' && (
           <div>
             {/* Elegant Green-White Banner */}
-            <div className="relative rounded-3xl overflow-hidden bg-white border border-[#e6eef0] shadow-sm p-8 sm:p-16 mb-10">
+            <div className="relative rounded-3xl overflow-hidden bg-white border border-[#e6eef0] shadow-sm p-8 sm:p-16 mb-6 md:mb-10">
               {/* Subtle background decorative green circles */}
               <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-50/40 rounded-full blur-3xl pointer-events-none" />
               <div className="absolute bottom-0 left-10 w-80 h-80 bg-teal-50/20 rounded-full blur-2xl pointer-events-none" />
@@ -530,7 +585,7 @@ export default function App() {
                 <span className="bg-emerald-50 text-emerald-700 border border-emerald-100/50 text-[10px] uppercase tracking-wider font-extrabold px-3 py-1.5 rounded-full">
                   🍃 Hệ thống đặt Tour Trực tuyến Hàng đầu
                 </span>
-                <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-[#1e293b] mt-5 leading-tight">
+                <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-[#1e293b] mt-5 leading-normal sm:leading-tight">
                   Tận hưởng hành trình <br/>
                   <span className="bg-gradient-to-r from-emerald-700 to-teal-500 bg-clip-text text-transparent">Trọn vẹn & Đẳng cấp nhất</span>
                 </h1>
@@ -557,19 +612,33 @@ export default function App() {
             </div>
 
             {/* Quick Search Widget */}
-            <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm mb-12 max-w-5xl mx-auto -mt-16 relative z-10">
+            <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm mb-12 max-w-5xl mx-auto mt-6 md:-mt-16 relative z-10">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Điểm đến</label>
-                  <div className="relative">
-                    <input 
-                      type="text" 
-                      placeholder="Nhập địa danh, thành phố..."
+                    <select 
                       value={searchDest}
                       onChange={(e) => setSearchDest(e.target.value)}
-                      className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
-                    />
-                  </div>
+                      className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors cursor-pointer font-semibold text-slate-700"
+                    >
+                      <option value="">-- Tất cả địa điểm --</option>
+                      <option value="Hà Nội">Hà Nội</option>
+                      <option value="Sa Pa">Sa Pa (Lào Cai)</option>
+                      <option value="Hà Giang">Hà Giang</option>
+                      <option value="Hạ Long">Vịnh Hạ Long</option>
+                      <option value="Ninh Bình">Ninh Bình</option>
+                      <option value="Quảng Bình">Quảng Bình (Phong Nha)</option>
+                      <option value="Huế">Huế</option>
+                      <option value="Đà Nẵng - Hội An">Đà Nẵng - Hội An</option>
+                      <option value="Quy Nhơn">Quy Nhơn (Bình Định)</option>
+                      <option value="Nha Trang">Nha Trang (Khánh Hòa)</option>
+                      <option value="Đà Lạt">Đà Lạt (Lâm Đồng)</option>
+                      <option value="Mũi Né">Mũi Né (Phan Thiết)</option>
+                      <option value="TP. Hồ Chí Minh">TP. Hồ Chí Minh (Sài Gòn)</option>
+                      <option value="Cần Thơ">Cần Thơ (Miền Tây)</option>
+                      <option value="Phú Quốc">Phú Quốc (Đảo Ngọc)</option>
+                      <option value="Singapore & Malaysia">Singapore & Malaysia (Quốc Tế)</option>
+                    </select>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Mức giá tối đa (VND)</label>
@@ -920,12 +989,10 @@ export default function App() {
               const usernameInput = e.target.username.value;
               const passwordInput = e.target.password.value;
               const emailInput = e.target.email.value;
-              const roleInput = e.target.role.value;
               handleAuth('register', e, { 
                 username: usernameInput, 
                 password: passwordInput, 
-                email: emailInput,
-                role: roleInput
+                email: emailInput
               });
             }}>
               <div>
@@ -959,17 +1026,6 @@ export default function App() {
                   placeholder="Tối thiểu 6 ký tự"
                   className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
                 />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Vai trò tài khoản</label>
-                <select 
-                  name="role"
-                  className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors cursor-pointer text-slate-600 font-semibold"
-                >
-                  <option value="ROLE_CUSTOMER">Khách Hàng (Customer)</option>
-                  <option value="ROLE_ADMIN">Quản Trị Viên (Admin)</option>
-                </select>
               </div>
 
               <button 
@@ -1214,6 +1270,90 @@ export default function App() {
                   </div>
                 </div>
               </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 6: User Profile Settings */}
+        {activeTab === 'user-profile' && (
+          <div className="max-w-md mx-auto my-12 bg-white border border-[#e6eef0] p-8 rounded-3xl shadow-sm relative overflow-hidden">
+            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-600 to-teal-500" />
+            <h2 className="text-xl font-extrabold text-slate-800 text-center">Thông tin cá nhân</h2>
+            <p className="text-slate-400 text-[11px] text-center mt-2">Cập nhật email và thay đổi mật khẩu tài khoản của bạn</p>
+
+            {profileLoading && !profileEmail ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3" />
+                <span className="text-xs text-slate-400">Đang tải thông tin...</span>
+              </div>
+            ) : (
+              <form className="mt-6 space-y-4" onSubmit={handleUpdateProfile}>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Tên đăng nhập (Username)</label>
+                  <input 
+                    type="text" 
+                    value={username}
+                    disabled
+                    className="w-full bg-slate-50 border border-[#e2ece7] text-slate-400 rounded-xl px-4 py-3 text-xs outline-none cursor-not-allowed font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Địa chỉ Email</label>
+                  <input 
+                    type="email" 
+                    required
+                    value={profileEmail}
+                    onChange={(e) => setProfileEmail(e.target.value)}
+                    placeholder="name@domain.com"
+                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Mật khẩu mới (Bỏ trống nếu không đổi)</label>
+                  <input 
+                    type="password" 
+                    value={profileNewPassword}
+                    onChange={(e) => setProfileNewPassword(e.target.value)}
+                    placeholder="Tối thiểu 6 ký tự"
+                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
+                  />
+                </div>
+
+                <div className="border-t border-[#f0f6f3] pt-4 mt-6">
+                  <label className="block text-[10px] font-bold text-rose-500 uppercase tracking-wider mb-2">Mật khẩu hiện tại (Xác thực bảo mật)</label>
+                  <input 
+                    type="password" 
+                    required
+                    value={profileOldPassword}
+                    onChange={(e) => setProfileOldPassword(e.target.value)}
+                    placeholder="Nhập mật khẩu hiện tại của bạn"
+                    className="w-full bg-[#fdf8f8] border border-rose-100 focus:border-rose-400 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
+                  />
+                </div>
+
+                <div className="flex space-x-3 pt-2">
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setProfileOldPassword('');
+                      setProfileNewPassword('');
+                      setActiveTab('home');
+                    }}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 py-3.5 rounded-xl transition-all"
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={profileLoading}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-xs font-bold text-white py-3.5 rounded-xl shadow-md shadow-emerald-600/10 hover:shadow-lg transition-all"
+                  >
+                    {profileLoading ? 'Đang lưu...' : 'Lưu thay đổi'}
+                  </button>
+                </div>
+              </form>
             )}
           </div>
         )}

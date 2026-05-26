@@ -18,10 +18,12 @@ com\etour\booking\entity\User.class
 com\etour\booking\dto\RegisterRequest.class
 com\etour\booking\controller\GlobalExceptionHandler.class
 com\etour\booking\controller\AuthController.class
+com\etour\booking\dto\UserProfileUpdateDTO.class
 com\etour\booking\service\TourService.class
 com\etour\booking\config\JwtAuthFilter.class
 com\etour\booking\dto\BookingResponseDTO.class
 com\etour\booking\controller\TourController.class
+com\etour\booking\controller\UserController.class
 com\etour\booking\repository\UserRepository.class
 com\etour\booking\repository\BookingRepository.class
 com\etour\booking\dto\AuthResponse.class

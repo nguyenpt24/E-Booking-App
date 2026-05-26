@@ -28,14 +28,15 @@ public class BookingController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    // Public / Customer: Pay booking and retrieve mock payment links (VNPay/MoMo redirection)
+    // Public / Customer: Pay booking and retrieve mock payment links (VNPay/MoMo
+    // redirection)
     @PostMapping("/{id}/pay")
     public ResponseEntity<Map<String, String>> checkoutBooking(@PathVariable Long id) {
         String paymentLink = bookingService.checkoutBooking(id);
-        
+
         Map<String, String> response = new HashMap<>();
         response.put("paymentUrl", paymentLink);
-        
+
         return ResponseEntity.ok(response);
     }
 
