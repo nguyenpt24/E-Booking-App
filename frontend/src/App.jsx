@@ -28,6 +28,8 @@ export default function App() {
 
   // Profile Update States
   const [profileEmail, setProfileEmail] = useState('');
+  const [profileFullName, setProfileFullName] = useState('');
+  const [profilePhoneNumber, setProfilePhoneNumber] = useState('');
   const [profileOldPassword, setProfileOldPassword] = useState('');
   const [profileNewPassword, setProfileNewPassword] = useState('');
   const [profileLoading, setProfileLoading] = useState(false);
@@ -106,6 +108,14 @@ export default function App() {
     }
   };
 
+  const handleViewAllTours = () => {
+    setSearchDest('');
+    setSearchMaxPrice('');
+    setSearchDate('');
+    fetchTours(false);
+    setActiveTab('tours-catalog');
+  };
+
   // Fetch Administrative Records (For Admin Only)
   const fetchAdminData = async () => {
     if (role !== 'ROLE_ADMIN') return;
@@ -143,6 +153,8 @@ export default function App() {
     try {
       const res = await axios.get('/users/profile');
       setProfileEmail(res.data.email);
+      setProfileFullName(res.data.fullName || '');
+      setProfilePhoneNumber(res.data.phoneNumber || '');
     } catch (err) {
       console.error(err);
       triggerNotification(err.response?.data?.message || 'Không thể lấy thông tin tài khoản!', 'error');
@@ -161,6 +173,8 @@ export default function App() {
     try {
       const payload = {
         email: profileEmail,
+        fullName: profileFullName,
+        phoneNumber: profilePhoneNumber,
         oldPassword: profileOldPassword,
         newPassword: profileNewPassword
       };
@@ -193,6 +207,11 @@ export default function App() {
 
   // Cart Operations
   const addToCart = (tour, count = 1) => {
+    if (!token) {
+      triggerNotification('Vui lòng đăng nhập tài khoản thành viên để chọn/đặt tour!', 'error');
+      setActiveTab('login');
+      return;
+    }
     const existingItemIdx = cart.findIndex((item) => item.tour.id === tour.id);
     const currentCart = [...cart];
 
@@ -499,7 +518,7 @@ export default function App() {
               Trang chủ
             </button>
             <button 
-              onClick={() => setActiveTab('tours-catalog')} 
+              onClick={handleViewAllTours} 
               className={`font-semibold text-sm transition-colors ${activeTab === 'tours-catalog' ? 'text-emerald-700' : 'text-slate-500 hover:text-slate-800'}`}
             >
               Danh sách Tour
@@ -575,34 +594,65 @@ export default function App() {
         {/* TAB 1: Minimalist Elegant Home Page */}
         {activeTab === 'home' && (
           <div>
-            {/* Elegant Green-White Banner */}
-            <div className="relative rounded-3xl overflow-hidden bg-white border border-[#e6eef0] shadow-sm p-8 sm:p-16 mb-6 md:mb-10">
-              {/* Subtle background decorative green circles */}
-              <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-50/40 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute bottom-0 left-10 w-80 h-80 bg-teal-50/20 rounded-full blur-2xl pointer-events-none" />
+            {/* Elegant Premium Sliding Banner */}
+            <div className="relative rounded-3xl overflow-hidden bg-slate-950 shadow-md mb-6 md:mb-10 h-[380px] sm:h-[420px] flex items-center">
+              {/* Infinite Marquee Background Image Slider */}
+              <div className="absolute inset-0 flex overflow-hidden pointer-events-none select-none z-0">
+                <div className="flex animate-marquee whitespace-nowrap h-full items-center">
+                  {/* Slide 1 */}
+                  {[
+                    "https://images.unsplash.com/photo-1559592481-74f4b16279f7?auto=format&fit=crop&w=800&q=80",
+                    "https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=800&q=80",
+                    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80",
+                    "https://images.unsplash.com/photo-1508873696983-2df519f0397e?auto=format&fit=crop&w=800&q=80",
+                    "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80",
+                    "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=800&q=80"
+                  ].map((url, i) => (
+                    <div key={i} className="inline-block w-[300px] sm:w-[400px] h-full relative flex-shrink-0">
+                      <img src={url} alt="Scenic destination" className="w-full h-full object-cover opacity-50" />
+                      <div className="absolute inset-0 bg-gradient-to-r from-slate-950/85 via-slate-950/30 to-slate-950/50" />
+                    </div>
+                  ))}
+                  {/* Duplicated Slide for seamless loop */}
+                  {[
+                    "https://images.unsplash.com/photo-1559592481-74f4b16279f7?auto=format&fit=crop&w=800&q=80",
+                    "https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=800&q=80",
+                    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80",
+                    "https://images.unsplash.com/photo-1508873696983-2df519f0397e?auto=format&fit=crop&w=800&q=80",
+                    "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80",
+                    "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=800&q=80"
+                  ].map((url, i) => (
+                    <div key={`dup-${i}`} className="inline-block w-[300px] sm:w-[400px] h-full relative flex-shrink-0">
+                      <img src={url} alt="Scenic destination duplicated" className="w-full h-full object-cover opacity-50" />
+                      <div className="absolute inset-0 bg-gradient-to-r from-slate-950/85 via-slate-950/30 to-slate-950/50" />
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-              <div className="relative z-10 max-w-2xl">
-                <span className="bg-emerald-50 text-emerald-700 border border-emerald-100/50 text-[10px] uppercase tracking-wider font-extrabold px-3 py-1.5 rounded-full">
+              {/* Glassmorphic Overlay for Text */}
+              <div className="relative z-10 max-w-2xl px-6 sm:px-16 text-left">
+                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/25 text-[10px] uppercase tracking-wider font-extrabold px-3 py-1.5 rounded-full backdrop-blur-sm">
                   🍃 Hệ thống đặt Tour Trực tuyến Hàng đầu
                 </span>
-                <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-[#1e293b] mt-5 leading-normal sm:leading-tight">
+                <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white mt-5 leading-normal sm:leading-tight">
                   Tận hưởng hành trình <br/>
-                  <span className="bg-gradient-to-r from-emerald-700 to-teal-500 bg-clip-text text-transparent">Trọn vẹn & Đẳng cấp nhất</span>
+                  <span className="bg-gradient-to-r from-emerald-400 to-teal-350 bg-clip-text text-transparent">Trọn vẹn & Đẳng cấp nhất</span>
                 </h1>
-                <p className="mt-4 text-slate-500 text-xs sm:text-sm leading-relaxed max-w-lg">
+                <p className="mt-4 text-slate-300 text-xs sm:text-sm leading-relaxed max-w-lg">
                   E-Tour mang đến những trải nghiệm du lịch cao cấp hàng đầu Việt Nam. Tích hợp thanh toán QR VNPay/MoMo an toàn, phản hồi xác thực tự động và chăm sóc tận tâm.
                 </p>
 
                 <div className="mt-8 flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
                   <button 
-                    onClick={() => setActiveTab('tours-catalog')}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-6 py-3.5 rounded-xl shadow-md shadow-emerald-600/10 transition-all text-center"
+                    onClick={handleViewAllTours}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-6 py-3.5 rounded-xl shadow-lg shadow-emerald-600/25 transition-all duration-200 transform hover:scale-[1.02] active:scale-95 text-center"
                   >
                     Xem tất cả Tour
                   </button>
                   <a 
                     href="#featured-tours"
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-6 py-3.5 rounded-xl transition-all text-center flex items-center justify-center space-x-2"
+                    className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-6 py-3.5 rounded-xl transition-all duration-200 transform hover:scale-[1.02] active:scale-95 text-center flex items-center justify-center space-x-2 border border-white/10 backdrop-blur-sm"
                   >
                     <span>Khám phá ngay</span>
                     <span>↓</span>
@@ -693,7 +743,7 @@ export default function App() {
                   <p className="text-[11px] text-slate-400 mt-1">Các tour du lịch được đánh giá cao và lựa chọn nhiều nhất trong tuần.</p>
                 </div>
                 <button 
-                  onClick={() => setActiveTab('tours-catalog')}
+                  onClick={handleViewAllTours}
                   className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center space-x-1"
                 >
                   <span>Xem thêm tour</span>
@@ -821,23 +871,33 @@ export default function App() {
                 <p className="text-[11px] text-slate-400 mt-1">Đầy đủ thông tin, hành trình minh bạch, dịch vụ chuẩn 5 sao.</p>
               </div>
 
-              {/* Categorization tabs */}
-              <div className="flex bg-white border border-[#e6eef0] p-1 rounded-xl shadow-sm self-start">
+              {/* Categorization tabs with smooth sliding pill transition */}
+              <div className="flex bg-slate-100 border border-[#e6eef0] p-1 rounded-xl shadow-sm self-start relative overflow-hidden h-[38px] items-center">
+                <div 
+                  className="absolute bg-emerald-600 rounded-lg transition-all duration-300 ease-out shadow-sm shadow-emerald-600/10 h-[30px]"
+                  style={{
+                    width: '85px',
+                    left: activeCategory === 'all' ? '4px' : activeCategory === 'domestic' ? '89px' : '174px'
+                  }}
+                />
                 <button 
                   onClick={() => setActiveCategory('all')}
-                  className={`text-[11px] font-bold px-4 py-2 rounded-lg transition-colors ${activeCategory === 'all' ? 'bg-emerald-600 text-white' : 'text-slate-500 hover:text-slate-800'}`}
+                  className={`relative z-10 text-[11px] font-bold px-4 py-2 rounded-lg transition-all duration-300 text-center ${activeCategory === 'all' ? 'text-white' : 'text-slate-500 hover:text-slate-800'}`}
+                  style={{ width: '85px' }}
                 >
                   Tất cả
                 </button>
                 <button 
                   onClick={() => setActiveCategory('domestic')}
-                  className={`text-[11px] font-bold px-4 py-2 rounded-lg transition-colors ${activeCategory === 'domestic' ? 'bg-emerald-600 text-white' : 'text-slate-500 hover:text-slate-800'}`}
+                  className={`relative z-10 text-[11px] font-bold px-4 py-2 rounded-lg transition-all duration-300 text-center ${activeCategory === 'domestic' ? 'text-white' : 'text-slate-500 hover:text-slate-800'}`}
+                  style={{ width: '85px' }}
                 >
                   Trong nước
                 </button>
                 <button 
                   onClick={() => setActiveCategory('international')}
-                  className={`text-[11px] font-bold px-4 py-2 rounded-lg transition-colors ${activeCategory === 'international' ? 'bg-emerald-600 text-white' : 'text-slate-500 hover:text-slate-800'}`}
+                  className={`relative z-10 text-[11px] font-bold px-4 py-2 rounded-lg transition-all duration-300 text-center ${activeCategory === 'international' ? 'text-white' : 'text-slate-500 hover:text-slate-800'}`}
+                  style={{ width: '85px' }}
                 >
                   Quốc tế
                 </button>
@@ -989,10 +1049,14 @@ export default function App() {
               const usernameInput = e.target.username.value;
               const passwordInput = e.target.password.value;
               const emailInput = e.target.email.value;
+              const fullNameInput = e.target.fullName.value;
+              const phoneNumberInput = e.target.phoneNumber.value;
               handleAuth('register', e, { 
                 username: usernameInput, 
                 password: passwordInput, 
-                email: emailInput
+                email: emailInput,
+                fullName: fullNameInput,
+                phoneNumber: phoneNumberInput
               });
             }}>
               <div>
@@ -1002,6 +1066,28 @@ export default function App() {
                   name="username"
                   required
                   placeholder="Nhập tên đăng nhập"
+                  className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Họ và tên</label>
+                <input 
+                  type="text" 
+                  name="fullName"
+                  required
+                  placeholder="Nguyễn Văn A"
+                  className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Số điện thoại</label>
+                <input 
+                  type="text" 
+                  name="phoneNumber"
+                  required
+                  placeholder="Ví dụ: 0987654321"
                   className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
                 />
               </div>
@@ -1299,6 +1385,30 @@ export default function App() {
                 </div>
 
                 <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Họ và tên</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={profileFullName}
+                    onChange={(e) => setProfileFullName(e.target.value)}
+                    placeholder="Nguyễn Văn A"
+                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Số điện thoại</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={profilePhoneNumber}
+                    onChange={(e) => setProfilePhoneNumber(e.target.value)}
+                    placeholder="Ví dụ: 0987654321"
+                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Địa chỉ Email</label>
                   <input 
                     type="email" 
@@ -1522,11 +1632,25 @@ export default function App() {
                     Xóa tất cả
                   </button>
                   <button 
-                    onClick={() => {
+                    onClick={async () => {
                       setShowCartDrawer(false);
-                      setCheckoutName('');
-                      setCheckoutEmail('');
-                      setCheckoutPhone('');
+                      if (token) {
+                        try {
+                          const res = await axios.get('/users/profile');
+                          setCheckoutName(res.data.fullName || '');
+                          setCheckoutEmail(res.data.email || '');
+                          setCheckoutPhone(res.data.phoneNumber || '');
+                        } catch (err) {
+                          console.error('Không thể tự động điền thông tin cá nhân:', err);
+                          setCheckoutName('');
+                          setCheckoutEmail('');
+                          setCheckoutPhone('');
+                        }
+                      } else {
+                        setCheckoutName('');
+                        setCheckoutEmail('');
+                        setCheckoutPhone('');
+                      }
                       setShowCheckoutModal(true);
                     }}
                     className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-3.5 rounded-xl shadow-md transition-colors"
