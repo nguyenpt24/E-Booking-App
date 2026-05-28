@@ -43,6 +43,8 @@ public class DataInitializer implements CommandLineRunner {
                     "admin@etour.com",
                     "ROLE_ADMIN"
             );
+            admin.setFullName("Administrator");
+            admin.setPhoneNumber("0999999999");
             userRepository.save(admin);
             log.info("🔑 Đã tạo tài khoản ADMIN mặc định: [admin / adminpassword]");
 
@@ -53,6 +55,8 @@ public class DataInitializer implements CommandLineRunner {
                     "customer@gmail.com",
                     "ROLE_CUSTOMER"
             );
+            customer.setFullName("Nguyễn Văn Khách");
+            customer.setPhoneNumber("0987654321");
             userRepository.save(customer);
             log.info("👤 Đã tạo tài khoản KHÁCH HÀNG mặc định: [customer / customerpassword]");
         }
@@ -72,7 +76,8 @@ public class DataInitializer implements CommandLineRunner {
                     "Ngày 3: Khám phá Bán đảo Sơn Trà, viếng chùa Linh Ứng. Tự do tắm biển Mỹ Khê.\n" +
                     "Ngày 4: Mua sắm đặc sản Chợ Hàn. Tiễn đoàn ra sân bay.",
                     15,
-                    "https://images.unsplash.com/photo-1559592481-74f4b16279f7?auto=format&fit=crop&w=800&q=80"
+                    "https://images.unsplash.com/photo-1559592481-74f4b16279f7?auto=format&fit=crop&w=800&q=80",
+                    15
             );
             tourRepository.save(tour1);
 
@@ -85,7 +90,8 @@ public class DataInitializer implements CommandLineRunner {
                     "Ngày 1: Di chuyển từ Hà Nội đi Hạ Long. Check-in du thuyền 5 sao sang trọng. Ăn trưa buffet hải sản trên vịnh. Chiều chèo thuyền Kayak tại Hang Luồn, tắm biển đảo Titop.\n" +
                     "Ngày 2: Tập Thái Cực Quyền đón bình minh trên boong tàu. Tham quan Hang Sửng Sốt - một trong những hang động đẹp nhất vịnh. Dùng bữa trưa nhẹ và quay trở lại bến tàu. Tiễn đoàn về Hà Nội.",
                     8,
-                    "https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=800&q=80"
+                    "https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=800&q=80",
+                    10
             );
             tourRepository.save(tour2);
 
@@ -100,7 +106,8 @@ public class DataInitializer implements CommandLineRunner {
                     "Ngày 3: Check-in Sunset Sanato ngắm hoàng hôn tuyệt đẹp. Thưởng thức chợ đêm hải sản Dương Đông.\n" +
                     "Ngày 4: Viếng chùa Hộ Quốc, mua sắm ngọc trai. Tiễn sân bay.",
                     20,
-                    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80"
+                    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80",
+                    20
             );
             tourRepository.save(tour3);
 

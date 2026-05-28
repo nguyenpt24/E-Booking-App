@@ -33,6 +33,8 @@ public class TourDTO {
 
     private String image;
 
+    private Integer discountPercent = 0;
+
     public TourDTO() {
     }
 
@@ -45,6 +47,19 @@ public class TourDTO {
         this.itinerary = itinerary;
         this.availableSlots = availableSlots;
         this.image = image;
+        this.discountPercent = 0;
+    }
+
+    public TourDTO(Long id, String title, String destination, BigDecimal price, LocalDate departureDate, String itinerary, Integer availableSlots, String image, Integer discountPercent) {
+        this.id = id;
+        this.title = title;
+        this.destination = destination;
+        this.price = price;
+        this.departureDate = departureDate;
+        this.itinerary = itinerary;
+        this.availableSlots = availableSlots;
+        this.image = image;
+        this.discountPercent = discountPercent != null ? discountPercent : 0;
     }
 
     // Getters and Setters
@@ -110,5 +125,13 @@ public class TourDTO {
 
     public void setImage(String image) {
         this.image = image;
+    }
+
+    public Integer getDiscountPercent() {
+        return discountPercent;
+    }
+
+    public void setDiscountPercent(Integer discountPercent) {
+        this.discountPercent = discountPercent != null ? discountPercent : 0;
     }
 }

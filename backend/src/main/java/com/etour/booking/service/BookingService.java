@@ -5,13 +5,18 @@ import com.etour.booking.dto.BookingResponseDTO;
 import com.etour.booking.dto.RevenueReportDTO;
 import com.etour.booking.entity.Booking;
 import com.etour.booking.entity.Tour;
+import com.etour.booking.entity.User;
+import com.etour.booking.entity.PointHistory;
 import com.etour.booking.repository.BookingRepository;
 import com.etour.booking.repository.TourRepository;
+import com.etour.booking.repository.UserRepository;
+import com.etour.booking.repository.PointHistoryRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -25,6 +30,12 @@ public class BookingService {
     private TourRepository tourRepository;
 
     @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private PointHistoryRepository pointHistoryRepository;
+
+    @Autowired
     private MailService mailService;
 
     @Autowired
@@ -32,6 +43,11 @@ public class BookingService {
 
     @Transactional
     public BookingResponseDTO createBooking(BookingRequestDTO request) {
+        return createBooking(request, null);
+    }
+
+    @Transactional
+    public BookingResponseDTO createBooking(BookingRequestDTO request, String username) {
         // Fetch Tour with lock/transaction safety
         Tour tour = tourRepository.findById(request.getTourId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy tour du lịch yêu cầu!"));
@@ -45,8 +61,34 @@ public class BookingService {
             throw new RuntimeException("Xin lỗi, tour chỉ còn lại " + tour.getAvailableSlots() + " chỗ trống. Không đủ cho " + request.getTicketsCount() + " vé đặt!");
         }
 
-        // Calculate total price
-        BigDecimal totalPrice = tour.getPrice().multiply(BigDecimal.valueOf(request.getTicketsCount()));
+        // Base price calculation (taking tour discount into account if there is any promotion)
+        BigDecimal basePrice = tour.getPrice();
+        if (tour.getDiscountPercent() > 0) {
+            BigDecimal multiplier = BigDecimal.valueOf(100 - tour.getDiscountPercent());
+            basePrice = basePrice.multiply(multiplier).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal originalPriceSum = basePrice.multiply(BigDecimal.valueOf(request.getTicketsCount()));
+        BigDecimal finalPrice = originalPriceSum;
+        BigDecimal discountAmount = BigDecimal.ZERO;
+
+        User user = null;
+        if (username != null && !username.trim().isEmpty()) {
+            user = userRepository.findByUsername(username).orElse(null);
+        }
+
+        // If user is logged in, apply their membership discount if the tour has a promotion (tour.discountPercent > 0)
+        if (user != null && tour.getDiscountPercent() > 0) {
+            if ("SILVER".equalsIgnoreCase(user.getMembershipType())) {
+                BigDecimal discount = originalPriceSum.multiply(BigDecimal.valueOf(3)).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
+                discountAmount = discount;
+                finalPrice = originalPriceSum.subtract(discount);
+            } else if ("GOLD".equalsIgnoreCase(user.getMembershipType())) {
+                BigDecimal discount = originalPriceSum.multiply(BigDecimal.valueOf(5)).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
+                discountAmount = discount;
+                finalPrice = originalPriceSum.subtract(discount);
+            }
+        }
 
         // Create Booking
         Booking booking = new Booking(
@@ -54,10 +96,15 @@ public class BookingService {
                 request.getCustomerEmail(),
                 request.getCustomerPhone(),
                 request.getTicketsCount(),
-                totalPrice,
+                finalPrice,
                 request.getPaymentMethod(),
                 tour
         );
+
+        if (user != null) {
+            booking.setUser(user);
+        }
+        booking.setDiscountAmount(discountAmount);
 
         // Deduct slots from Tour
         tour.setAvailableSlots(tour.getAvailableSlots() - request.getTicketsCount());
@@ -89,7 +136,27 @@ public class BookingService {
         booking.setStatus("PAID");
         Booking updatedBooking = bookingRepository.save(booking);
 
-        // Dispatch Invoice Email in Background/Simulated
+        // Dispatch points if booking has user associated
+        User user = booking.getUser();
+        if (user != null) {
+            int pointsEarned = booking.getTotalPrice().divide(BigDecimal.valueOf(100000), 0, RoundingMode.DOWN).intValue();
+            if (pointsEarned > 0) {
+                user.setCurrentPoints(user.getCurrentPoints() + pointsEarned);
+                user.setTotalPointsAccumulated(user.getTotalPointsAccumulated() + pointsEarned);
+                user.setTotalToursParticipated(user.getTotalToursParticipated() + 1);
+                
+                updateUserMembershipTier(user);
+
+                // Log point history
+                PointHistory log = new PointHistory(user, pointsEarned, "Tích lũy từ đơn đặt tour #" + booking.getId() + " (" + booking.getTour().getTitle() + ")");
+                pointHistoryRepository.save(log);
+            } else {
+                user.setTotalToursParticipated(user.getTotalToursParticipated() + 1);
+                userRepository.save(user);
+            }
+        }
+
+        // Dispatch Invoice Email
         mailService.sendBookingConfirmationEmail(updatedBooking);
 
         return mapToResponseDTO(updatedBooking);
@@ -104,7 +171,9 @@ public class BookingService {
             throw new RuntimeException("Đơn hàng này đã được hủy trước đó!");
         }
 
-        // Restore slots back to Tour if it was not already cancelled
+        boolean wasPaid = "PAID".equals(booking.getStatus());
+
+        // Restore slots back to Tour
         Tour tour = booking.getTour();
         tour.setAvailableSlots(tour.getAvailableSlots() + booking.getTicketsCount());
         tourRepository.save(tour);
@@ -112,7 +181,36 @@ public class BookingService {
         booking.setStatus("CANCELLED");
         Booking updatedBooking = bookingRepository.save(booking);
 
+        // Deduct points if paid and has user
+        User user = booking.getUser();
+        if (user != null && wasPaid) {
+            int pointsDeducted = booking.getTotalPrice().divide(BigDecimal.valueOf(100000), 0, RoundingMode.DOWN).intValue();
+            user.setTotalToursParticipated(Math.max(0, user.getTotalToursParticipated() - 1));
+            if (pointsDeducted > 0) {
+                user.setCurrentPoints(Math.max(0, user.getCurrentPoints() - pointsDeducted));
+                updateUserMembershipTier(user);
+
+                // Log points deduction
+                PointHistory log = new PointHistory(user, -pointsDeducted, "Hủy tích lũy do hủy đơn đặt tour #" + booking.getId());
+                pointHistoryRepository.save(log);
+            } else {
+                userRepository.save(user);
+            }
+        }
+
         return mapToResponseDTO(updatedBooking);
+    }
+
+    private void updateUserMembershipTier(User user) {
+        int pts = user.getCurrentPoints();
+        if (pts >= 5000) {
+            user.setMembershipType("GOLD");
+        } else if (pts >= 1000) {
+            user.setMembershipType("SILVER");
+        } else {
+            user.setMembershipType("BRONZE");
+        }
+        userRepository.save(user);
     }
 
     public String checkoutBooking(Long id) {
@@ -143,7 +241,9 @@ public class BookingService {
                 booking.getPaymentMethod(),
                 booking.getCreatedAt(),
                 booking.getTour().getId(),
-                booking.getTour().getTitle()
+                booking.getTour().getTitle(),
+                booking.getDiscountAmount(),
+                booking.getUser() != null ? booking.getUser().getUsername() : null
         );
     }
 }

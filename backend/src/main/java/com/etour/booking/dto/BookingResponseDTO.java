@@ -16,6 +16,8 @@ public class BookingResponseDTO {
     private LocalDateTime createdAt;
     private Long tourId;
     private String tourTitle;
+    private BigDecimal discountAmount;
+    private String username;
 
     public BookingResponseDTO() {
     }
@@ -32,6 +34,24 @@ public class BookingResponseDTO {
         this.createdAt = createdAt;
         this.tourId = tourId;
         this.tourTitle = tourTitle;
+        this.discountAmount = BigDecimal.ZERO;
+        this.username = null;
+    }
+
+    public BookingResponseDTO(Long id, String customerName, String customerEmail, String customerPhone, Integer ticketsCount, BigDecimal totalPrice, String status, String paymentMethod, LocalDateTime createdAt, Long tourId, String tourTitle, BigDecimal discountAmount, String username) {
+        this.id = id;
+        this.customerName = customerName;
+        this.customerEmail = customerEmail;
+        this.customerPhone = customerPhone;
+        this.ticketsCount = ticketsCount;
+        this.totalPrice = totalPrice;
+        this.status = status;
+        this.paymentMethod = paymentMethod;
+        this.createdAt = createdAt;
+        this.tourId = tourId;
+        this.tourTitle = tourTitle;
+        this.discountAmount = discountAmount != null ? discountAmount : BigDecimal.ZERO;
+        this.username = username;
     }
 
     // Getters and Setters
@@ -121,5 +141,21 @@ public class BookingResponseDTO {
 
     public void setTourTitle(String tourTitle) {
         this.tourTitle = tourTitle;
+    }
+
+    public BigDecimal getDiscountAmount() {
+        return discountAmount;
+    }
+
+    public void setDiscountAmount(BigDecimal discountAmount) {
+        this.discountAmount = discountAmount;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
     }
 }

@@ -40,6 +40,14 @@ public class AuthService {
                 request.getEmail(),
                 assignedRole
         );
+        user.setFullName(request.getFullName());
+        user.setPhoneNumber(request.getPhoneNumber());
+        user.setGender(request.getGender());
+        user.setBirthDate(request.getBirthDate());
+        user.setMembershipType("BRONZE");
+        user.setTotalToursParticipated(0);
+        user.setTotalPointsAccumulated(0);
+        user.setCurrentPoints(0);
 
         userRepository.save(user);
 

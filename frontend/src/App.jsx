@@ -26,10 +26,60 @@ export default function App() {
   // Navigation State: 'home' | 'tours-catalog' | 'login' | 'register' | 'admin-dashboard'
   const [activeTab, setActiveTab] = useState('home');
 
+  // Currency Converter State
+  const [currency, setCurrency] = useState(localStorage.getItem('currency') || 'VND');
+  const exchangeRate = 25000;
+
+  const formatPrice = (priceVND) => {
+    if (currency === 'USD') {
+      const converted = priceVND / exchangeRate;
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(converted);
+    }
+    return new Intl.NumberFormat('vi-VN').format(priceVND) + ' đ';
+  };
+
+  const getBookingPromoPrice = (tour) => {
+    let price = tour.price;
+    if (tour.discountPercent > 0) {
+      price = price * (100 - tour.discountPercent) / 100;
+    }
+    return price;
+  };
+
+  const getBookingFinalPrice = (tour, count) => {
+    let base = getBookingPromoPrice(tour) * count;
+    if (userProfile && tour.discountPercent > 0) {
+      if (userProfile.membershipType === 'SILVER') {
+        base = base * 0.97;
+      } else if (userProfile.membershipType === 'GOLD') {
+        base = base * 0.95;
+      }
+    }
+    return Math.round(base);
+  };
+
+  const handleCurrencyChange = (newCurr) => {
+    setCurrency(newCurr);
+    localStorage.setItem('currency', newCurr);
+    triggerNotification(`Đã chuyển đổi tiền tệ sang ${newCurr}`);
+  };
+
   // Profile Update States
+  const [userProfile, setUserProfile] = useState(null);
   const [profileEmail, setProfileEmail] = useState('');
   const [profileFullName, setProfileFullName] = useState('');
   const [profilePhoneNumber, setProfilePhoneNumber] = useState('');
+  const [profileGender, setProfileGender] = useState('Nam');
+  const [profileBirthDate, setProfileBirthDate] = useState('');
+  const [profileCccd, setProfileCccd] = useState('');
+  const [profileCccdIssueDate, setProfileCccdIssueDate] = useState('');
+  const [profileCccdIssuePlace, setProfileCccdIssuePlace] = useState('');
+  const [profilePassport, setProfilePassport] = useState('');
+  const [profilePassportIssueDate, setProfilePassportIssueDate] = useState('');
+  const [profilePassportExpiryDate, setProfilePassportExpiryDate] = useState('');
+  const [profileAddress, setProfileAddress] = useState('');
+  const [profileNationality, setProfileNationality] = useState('Việt Nam');
+
   const [profileOldPassword, setProfileOldPassword] = useState('');
   const [profileNewPassword, setProfileNewPassword] = useState('');
   const [profileLoading, setProfileLoading] = useState(false);
@@ -62,7 +112,15 @@ export default function App() {
   // Admin Dashboard States
   const [adminBookings, setAdminBookings] = useState([]);
   const [adminRevenueReports, setAdminRevenueReports] = useState([]);
+  const [adminMembers, setAdminMembers] = useState([]);
   const [loadingAdminData, setLoadingAdminData] = useState(false);
+  const [selectedMemberHistory, setSelectedMemberHistory] = useState([]);
+  const [showPointsAdjustModal, setShowPointsAdjustModal] = useState(false);
+  const [adjustingMember, setAdjustingMember] = useState(null);
+  const [adjustPointsChange, setAdjustPointsChange] = useState('');
+  const [adjustReason, setAdjustReason] = useState('');
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [adminTab, setAdminTab] = useState('bookings'); // 'bookings' | 'tours' | 'members'
 
   // Tour CRUD Modal States
   const [showTourCrudModal, setShowTourCrudModal] = useState(false);
@@ -75,14 +133,17 @@ export default function App() {
   const [crudItinerary, setCrudItinerary] = useState('');
   const [crudAvailableSlots, setCrudAvailableSlots] = useState(10);
   const [crudImage, setCrudImage] = useState('');
+  const [crudDiscountPercent, setCrudDiscountPercent] = useState(0);
 
   // Notification Toast State
   const [notification, setNotification] = useState(null);
+  const [toastKey, setToastKey] = useState(0);
 
   // Auto-dismiss Alerts Utility
   const triggerNotification = (message, type = 'success') => {
     setNotification({ message, type });
-    setTimeout(() => setNotification(null), 5000);
+    setToastKey(prev => prev + 1);
+    setTimeout(() => setNotification(null), 2500);
   };
 
   // Fetch Public/Filtered Tours
@@ -126,11 +187,46 @@ export default function App() {
 
       const reportRes = await axios.get('/admin/reports/revenue');
       setAdminRevenueReports(reportRes.data);
+
+      const membersRes = await axios.get('/admin/members');
+      setAdminMembers(membersRes.data);
     } catch (err) {
       console.error(err);
       triggerNotification(err.response?.data?.message || 'Không thể đồng bộ dữ liệu quản trị!', 'error');
     } finally {
       setLoadingAdminData(false);
+    }
+  };
+
+  const fetchMemberHistory = async (memberId) => {
+    try {
+      const res = await axios.get(`/admin/members/${memberId}/history`);
+      setSelectedMemberHistory(res.data);
+      setShowHistoryModal(true);
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Không thể tải lịch sử tích điểm của thành viên!', 'error');
+    }
+  };
+
+  const handleAdjustPointsSubmit = async (e) => {
+    e.preventDefault();
+    if (!adjustingMember) return;
+    try {
+      const payload = {
+        pointsChange: parseInt(adjustPointsChange),
+        reason: adjustReason
+      };
+      await axios.put(`/admin/members/${adjustingMember.id}/points`, payload);
+      triggerNotification(`Đã điều chỉnh điểm cho thành viên ${adjustingMember.fullName}!`);
+      setShowPointsAdjustModal(false);
+      setAdjustPointsChange('');
+      setAdjustReason('');
+      setAdjustingMember(null);
+      fetchAdminData();
+    } catch (err) {
+      console.error(err);
+      triggerNotification(err.response?.data?.message || 'Không thể điều chỉnh điểm!', 'error');
     }
   };
 
@@ -147,14 +243,33 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => {
+    if (token) {
+      fetchUserProfile();
+    } else {
+      setUserProfile(null);
+    }
+  }, [token]);
+
   const fetchUserProfile = async () => {
     if (!token) return;
     setProfileLoading(true);
     try {
       const res = await axios.get('/users/profile');
-      setProfileEmail(res.data.email);
+      setUserProfile(res.data);
+      setProfileEmail(res.data.email || '');
       setProfileFullName(res.data.fullName || '');
       setProfilePhoneNumber(res.data.phoneNumber || '');
+      setProfileGender(res.data.gender || 'Nam');
+      setProfileBirthDate(res.data.birthDate || '');
+      setProfileCccd(res.data.cccd || '');
+      setProfileCccdIssueDate(res.data.cccdIssueDate || '');
+      setProfileCccdIssuePlace(res.data.cccdIssuePlace || '');
+      setProfilePassport(res.data.passport || '');
+      setProfilePassportIssueDate(res.data.passportIssueDate || '');
+      setProfilePassportExpiryDate(res.data.passportExpiryDate || '');
+      setProfileAddress(res.data.address || '');
+      setProfileNationality(res.data.nationality || 'Việt Nam');
     } catch (err) {
       console.error(err);
       triggerNotification(err.response?.data?.message || 'Không thể lấy thông tin tài khoản!', 'error');
@@ -175,6 +290,16 @@ export default function App() {
         email: profileEmail,
         fullName: profileFullName,
         phoneNumber: profilePhoneNumber,
+        gender: profileGender,
+        birthDate: profileBirthDate || null,
+        cccd: profileCccd || null,
+        cccdIssueDate: profileCccdIssueDate || null,
+        cccdIssuePlace: profileCccdIssuePlace || null,
+        passport: profilePassport || null,
+        passportIssueDate: profilePassportIssueDate || null,
+        passportExpiryDate: profilePassportExpiryDate || null,
+        address: profileAddress || null,
+        nationality: profileNationality || null,
         oldPassword: profileOldPassword,
         newPassword: profileNewPassword
       };
@@ -182,6 +307,7 @@ export default function App() {
       triggerNotification(res.data.message || 'Cập nhật tài khoản thành công!');
       setProfileOldPassword('');
       setProfileNewPassword('');
+      fetchUserProfile();
       setActiveTab('home');
     } catch (err) {
       console.error(err);
@@ -265,7 +391,7 @@ export default function App() {
   };
 
   const getCartTotal = () => {
-    return cart.reduce((total, item) => total + (item.tour.price * item.ticketsCount), 0);
+    return cart.reduce((total, item) => total + getBookingFinalPrice(item.tour, item.ticketsCount), 0);
   };
 
   // Auth Operations
@@ -486,12 +612,18 @@ export default function App() {
       
       {/* Dynamic Toast Alert Notification */}
       {notification && (
-        <div className={`fixed top-6 right-6 z-50 flex items-center p-4 rounded-xl shadow-xl transition-all duration-300 transform scale-100 ${
-          notification.type === 'error' ? 'bg-rose-550 bg-rose-600 border border-rose-500 text-white' : 'bg-emerald-700 text-white border border-emerald-600'
-        }`}>
-          <div className="text-xs font-bold tracking-wide flex items-center space-x-2">
-            <span>{notification.type === 'error' ? '⚠️' : '✨'}</span>
-            <span>{notification.message}</span>
+        <div 
+          key={toastKey}
+          className={`fixed bottom-6 right-6 z-55 z-50 flex items-center p-4 rounded-2xl shadow-2xl animate-toast border ${
+            notification.type === 'error' 
+              ? 'bg-rose-950/95 text-rose-100 border-rose-800/50 backdrop-blur-md' 
+              : 'bg-emerald-950/95 text-emerald-100 border-emerald-800/50 backdrop-blur-md'
+          }`}
+          style={{ minWidth: '300px' }}
+        >
+          <div className="text-xs font-extrabold tracking-wide flex items-center space-x-3 w-full">
+            <span className="text-base">{notification.type === 'error' ? '❌' : '✅'}</span>
+            <span className="flex-1 leading-normal">{notification.message}</span>
           </div>
         </div>
       )}
@@ -534,13 +666,29 @@ export default function App() {
           </nav>
 
           {/* Action Blocks (Cart & Profile Accounts) */}
-          <div className="flex items-center space-x-5">
+          <div className="flex items-center space-x-4">
+            {/* Currency conversion button */}
+            <div className="flex bg-[#f0f6f3] border border-[#e2ece7] p-0.5 rounded-lg shadow-xs items-center h-[34px]">
+              <button 
+                onClick={() => handleCurrencyChange('VND')}
+                className={`text-[9px] font-extrabold px-2.5 py-1.5 rounded-md transition-all ${currency === 'VND' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                VND
+              </button>
+              <button 
+                onClick={() => handleCurrencyChange('USD')}
+                className={`text-[9px] font-extrabold px-2.5 py-1.5 rounded-md transition-all ${currency === 'USD' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                USD
+              </button>
+            </div>
+
             {/* Cart Trigger Button */}
             <button 
               onClick={() => setShowCartDrawer(true)}
-              className="relative p-2.5 bg-[#eff7f4] border border-[#d6eae1] rounded-xl hover:bg-[#e3f2ec] text-slate-700 hover:text-emerald-700 transition-all"
+              className="relative p-2 bg-[#eff7f4] border border-[#d6eae1] rounded-xl hover:bg-[#e3f2ec] text-slate-700 hover:text-emerald-700 transition-all h-[36px] w-[36px] flex items-center justify-center"
             >
-              🛒
+              <span className="text-sm">🛒</span>
               {cart.length > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 bg-emerald-600 text-white font-extrabold text-[9px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white animate-bounce">
                   {cart.reduce((sum, item) => sum + item.ticketsCount, 0)}
@@ -559,11 +707,13 @@ export default function App() {
                     <span>{username}</span>
                     <span className="text-[10px] opacity-60 group-hover:opacity-100 transition-opacity">⚙️</span>
                   </span>
-                  <span className="block text-[10px] text-emerald-600 font-semibold">{role === 'ROLE_ADMIN' ? 'Admin Hệ Thống' : 'Khách Hàng'}</span>
+                  <span className="block text-[10px] text-emerald-600 font-semibold">
+                    {role === 'ROLE_ADMIN' ? 'Admin Hệ Thống' : (userProfile?.membershipType ? `${userProfile.membershipType} Member` : 'Khách Hàng')}
+                  </span>
                 </div>
                 <button 
                   onClick={handleLogout}
-                  className="bg-slate-100 hover:bg-[#fde8e8] hover:text-rose-600 border border-slate-200 hover:border-[#fbcfe8]/40 text-xs px-3.5 py-2 rounded-xl transition-all font-bold text-slate-650"
+                  className="bg-slate-100 hover:bg-[#fde8e8] hover:text-rose-600 border border-slate-200 hover:border-[#fbcfe8]/40 text-xs px-3 py-2 rounded-xl transition-all font-bold text-slate-650"
                 >
                   Đăng xuất
                 </button>
@@ -572,13 +722,13 @@ export default function App() {
               <div className="flex items-center space-x-2">
                 <button 
                   onClick={() => setActiveTab('login')} 
-                  className="text-slate-600 hover:text-slate-900 text-sm px-4 py-2.5 font-bold transition-colors"
+                  className="text-slate-600 hover:text-slate-900 text-sm px-3 py-2 font-bold transition-colors"
                 >
                   Đăng nhập
                 </button>
                 <button 
                   onClick={() => setActiveTab('register')} 
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2.5 rounded-xl font-bold shadow-md shadow-emerald-600/10 hover:shadow-lg transition-all"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded-xl font-bold shadow-md shadow-emerald-600/10 hover:shadow-lg transition-all"
                 >
                   Đăng ký
                 </button>
@@ -637,7 +787,7 @@ export default function App() {
                 </span>
                 <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white mt-5 leading-normal sm:leading-tight">
                   Tận hưởng hành trình <br/>
-                  <span className="bg-gradient-to-r from-emerald-400 to-teal-350 bg-clip-text text-transparent">Trọn vẹn & Đẳng cấp nhất</span>
+                  <span className="bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">Trọn vẹn & Đẳng cấp nhất</span>
                 </h1>
                 <p className="mt-4 text-slate-300 text-xs sm:text-sm leading-relaxed max-w-lg">
                   E-Tour mang đến những trải nghiệm du lịch cao cấp hàng đầu Việt Nam. Tích hợp thanh toán QR VNPay/MoMo an toàn, phản hồi xác thực tự động và chăm sóc tận tâm.
@@ -645,24 +795,32 @@ export default function App() {
 
                 <div className="mt-8 flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
                   <button 
-                    onClick={handleViewAllTours}
+                    onClick={() => {
+                      fetchTours(true); // maintain current search parameters
+                      setActiveTab('tours-catalog');
+                    }}
                     className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-6 py-3.5 rounded-xl shadow-lg shadow-emerald-600/25 transition-all duration-200 transform hover:scale-[1.02] active:scale-95 text-center"
                   >
                     Xem tất cả Tour
                   </button>
-                  <a 
-                    href="#featured-tours"
+                  <button 
+                    onClick={() => {
+                      const element = document.getElementById('featured-tours');
+                      if (element) {
+                        element.scrollIntoView({ behavior: 'smooth' });
+                      }
+                    }}
                     className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-6 py-3.5 rounded-xl transition-all duration-200 transform hover:scale-[1.02] active:scale-95 text-center flex items-center justify-center space-x-2 border border-white/10 backdrop-blur-sm"
                   >
                     <span>Khám phá ngay</span>
                     <span>↓</span>
-                  </a>
+                  </button>
                 </div>
               </div>
             </div>
 
             {/* Quick Search Widget */}
-            <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm mb-12 max-w-5xl mx-auto mt-6 md:-mt-16 relative z-10">
+            <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm mb-12 max-w-5xl mx-auto mt-8 relative z-10">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Điểm đến</label>
@@ -801,7 +959,7 @@ export default function App() {
                           <div>
                             <span className="text-[10px] text-slate-400 block font-semibold">Giá từ</span>
                             <span className="text-sm font-black text-rose-500">
-                              {new Intl.NumberFormat('vi-VN').format(tour.price)} <span className="text-[10px] font-normal text-slate-500">đ</span>
+                              {formatPrice(tour.price)}
                             </span>
                           </div>
 
@@ -832,32 +990,77 @@ export default function App() {
               )}
             </div>
 
-            {/* Why Choose E-Tour Highlights */}
-            <div className="bg-white border border-[#e6eef0] rounded-3xl p-8 sm:p-12 shadow-sm my-16">
-              <h2 className="text-center text-xl font-extrabold text-slate-800 mb-8">✨ Điểm cộng vượt trội từ E-Tour</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div className="text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg mx-auto font-bold shadow-sm">
-                    🔒
-                  </div>
-                  <h3 className="text-sm font-bold text-slate-800">Đặt chỗ & Bảo mật 100%</h3>
-                  <p className="text-[11px] text-slate-400 leading-relaxed px-4">Thông tin vé, tài khoản và lịch trình giao dịch được mã hóa hoàn toàn bằng chuẩn Spring Security & JWT.</p>
-                </div>
-                <div className="text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg mx-auto font-bold shadow-sm">
-                    ⚡
-                  </div>
-                  <h3 className="text-sm font-bold text-slate-800">Thanh toán VNPay / MoMo</h3>
-                  <p className="text-[11px] text-slate-400 leading-relaxed px-4">Tích hợp tạo cổng sandbox chuyển tiền QR thông minh, không cần khai báo thẻ rườm rà.</p>
-                </div>
-                <div className="text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg mx-auto font-bold shadow-sm">
-                    📨
-                  </div>
-                  <h3 className="text-sm font-bold text-slate-800">Hóa đơn Email tự động</h3>
-                  <p className="text-[11px] text-slate-400 leading-relaxed px-4">Hệ thống Spring Mail tự động kết xuất hóa đơn HTML sang trọng gửi về email khách hàng ngay khi hoàn tất.</p>
+            {/* Tour đang ưu đãi hấp dẫn */}
+            <div className="my-16">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-extrabold text-slate-800">🔥 Tour Đang Ưu Đãi Hấp Dẫn</h2>
+                  <p className="text-[11px] text-slate-400 mt-1">Các tour du lịch đang giảm giá kịch sàn. Đặt ngay kẻo lỡ!</p>
                 </div>
               </div>
+
+              {tours.filter(t => t.discountPercent > 0).length === 0 ? (
+                <div className="bg-white border border-[#e6eef0] p-12 rounded-3xl text-center text-slate-400 text-xs">
+                  Hiện chưa có chương trình ưu đãi nào diễn ra. Quý khách vui lòng quay lại sau!
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {tours.filter(t => t.discountPercent > 0).map((tour) => {
+                    const promoPrice = tour.price * (100 - tour.discountPercent) / 100;
+                    return (
+                      <div key={tour.id} className="group bg-white border border-[#e6eef0] rounded-2xl overflow-hidden hover:shadow-lg transition-all duration-300 flex flex-col relative">
+                        {/* Sale Tag */}
+                        <div className="absolute top-3 left-3 z-10 bg-rose-650 bg-rose-600 text-white text-[10px] font-black px-2.5 py-1 rounded-lg shadow-md animate-pulse">
+                          -{tour.discountPercent}% OFF
+                        </div>
+
+                        <div className="relative h-44 bg-slate-100 overflow-hidden">
+                          <img 
+                            src={tour.image} 
+                            alt={tour.title} 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            onError={(e) => {
+                              e.target.src = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80";
+                            }}
+                          />
+                          <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur-sm px-2.5 py-0.5 rounded-full text-[10px] font-bold text-emerald-700 shadow-sm">
+                            📍 {tour.destination}
+                          </div>
+                        </div>
+                        
+                        <div className="p-5 flex-1 flex flex-col justify-between">
+                          <div className="space-y-2">
+                            <h3 className="text-sm font-bold text-slate-800 group-hover:text-emerald-700 transition-colors line-clamp-1">
+                              {tour.title}
+                            </h3>
+                            <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-2">
+                              {tour.itinerary}
+                            </p>
+                          </div>
+
+                          <div className="mt-4 pt-3 border-t border-[#f0f6f3] flex items-center justify-between">
+                            <div>
+                              <span className="text-[9px] text-slate-400 block font-semibold line-through">
+                                Giá gốc: {formatPrice(tour.price)}
+                              </span>
+                              <span className="text-sm font-black text-rose-600 block">
+                                Ưu đãi: {formatPrice(promoPrice)}
+                              </span>
+                            </div>
+
+                            <button 
+                              onClick={() => setSelectedTourDetail(tour)}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-4 py-2 rounded-xl transition-all shadow-sm"
+                            >
+                              Xem chi tiết
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -916,8 +1119,13 @@ export default function App() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredToursList.map((tour) => (
-                  <div key={tour.id} className="group bg-white border border-[#e6eef0] rounded-2xl overflow-hidden hover:shadow-lg transition-all duration-300 flex flex-col">
+                  <div key={tour.id} className="group bg-white border border-[#e6eef0] rounded-2xl overflow-hidden hover:shadow-lg transition-all duration-300 flex flex-col relative">
                     <div className="relative h-48 bg-slate-100 overflow-hidden">
+                      {tour.discountPercent > 0 && (
+                        <div className="absolute top-3 left-3 z-10 bg-rose-600 text-white text-[9px] font-black px-2 py-0.5 rounded shadow-sm animate-pulse">
+                          -{tour.discountPercent}%
+                        </div>
+                      )}
                       <img 
                         src={tour.image} 
                         alt={tour.title} 
@@ -926,7 +1134,7 @@ export default function App() {
                           e.target.src = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80";
                         }}
                       />
-                      <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-sm px-2.5 py-0.5 rounded-full text-[10px] font-bold text-emerald-700 shadow-sm">
+                      <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur-sm px-2.5 py-0.5 rounded-full text-[10px] font-bold text-emerald-700 shadow-sm">
                         📍 {tour.destination}
                       </div>
                       <div className="absolute top-3 right-3">
@@ -935,28 +1143,43 @@ export default function App() {
                         ) : tour.availableSlots <= 3 ? (
                           <span className="bg-rose-550 bg-rose-500 text-white text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase animate-pulse">Chỉ còn {tour.availableSlots} chỗ</span>
                         ) : (
-                          <span className="bg-emerald-50 text-emerald-700 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">Còn {tour.availableSlots} chỗ</span>
+                          <span className="bg-emerald-550 bg-emerald-50 text-emerald-700 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">Còn {tour.availableSlots} chỗ</span>
                         )}
                       </div>
                     </div>
                     
-                    <div className="p-5 flex-1 flex flex-col">
-                      <h3 className="text-sm font-bold text-slate-800 group-hover:text-emerald-700 transition-colors line-clamp-1">
-                        {tour.title}
-                      </h3>
-                      <div className="text-[10px] text-slate-400 mt-2 pb-2.5 border-b border-[#f0f6f3]">
-                        Khởi hành: <strong>{tour.departureDate}</strong>
+                    <div className="p-5 flex-1 flex flex-col justify-between">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-800 group-hover:text-emerald-700 transition-colors line-clamp-1">
+                          {tour.title}
+                        </h3>
+                        <div className="text-[10px] text-slate-400 mt-2 pb-2.5 border-b border-[#f0f6f3]">
+                          Khởi hành: <strong>{tour.departureDate}</strong>
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-3 mt-3">
+                          {tour.itinerary}
+                        </p>
                       </div>
-                      <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-3 mt-3 flex-1">
-                        {tour.itinerary}
-                      </p>
 
                       <div className="mt-4 pt-3 border-t border-[#f0f6f3] flex items-center justify-between">
                         <div>
-                          <span className="text-[10px] text-slate-400 block font-semibold">Giá từ</span>
-                          <span className="text-base font-black text-rose-500">
-                            {new Intl.NumberFormat('vi-VN').format(tour.price)} <span className="text-[10px] font-normal text-slate-500">đ</span>
-                          </span>
+                          {tour.discountPercent > 0 ? (
+                            <div>
+                              <span className="text-[9px] text-slate-400 block font-semibold line-through">
+                                Gốc: {formatPrice(tour.price)}
+                              </span>
+                              <span className="text-sm font-black text-rose-500 block">
+                                Ưu đãi: {formatPrice(tour.price * (100 - tour.discountPercent) / 100)}
+                              </span>
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="text-[10px] text-slate-400 block font-semibold">Giá từ</span>
+                              <span className="text-sm font-black text-rose-500 block">
+                                {formatPrice(tour.price)}
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex space-x-1.5">
@@ -1051,12 +1274,16 @@ export default function App() {
               const emailInput = e.target.email.value;
               const fullNameInput = e.target.fullName.value;
               const phoneNumberInput = e.target.phoneNumber.value;
+              const genderInput = e.target.gender.value;
+              const birthDateInput = e.target.birthDate.value;
               handleAuth('register', e, { 
                 username: usernameInput, 
                 password: passwordInput, 
                 email: emailInput,
                 fullName: fullNameInput,
-                phoneNumber: phoneNumberInput
+                phoneNumber: phoneNumberInput,
+                gender: genderInput,
+                birthDate: birthDateInput
               });
             }}>
               <div>
@@ -1079,6 +1306,31 @@ export default function App() {
                   placeholder="Nguyễn Văn A"
                   className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Giới tính</label>
+                  <select 
+                    name="gender"
+                    required
+                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors cursor-pointer"
+                  >
+                    <option value="Nam">Nam</option>
+                    <option value="Nữ">Nữ</option>
+                    <option value="Khác">Khác</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ngày sinh</label>
+                  <input 
+                    type="date" 
+                    name="birthDate"
+                    required
+                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors cursor-pointer"
+                  />
+                </div>
               </div>
 
               <div>
@@ -1155,206 +1407,304 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Aggregated indicators */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                  <div className="bg-white border border-[#e6eef0] p-6 rounded-2xl">
-                    <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Tổng doanh thu thực nhận</span>
-                    <span className="text-2xl font-black text-emerald-600 mt-2 block">
-                      {new Intl.NumberFormat('vi-VN').format(
-                        adminBookings
-                          .filter(b => b.status === 'PAID')
-                          .reduce((sum, b) => sum + b.totalPrice, 0)
-                      )} <span className="text-xs font-normal text-slate-450">VND</span>
-                    </span>
-                    <span className="text-[10px] text-slate-400 block mt-2">Dựa trên các đơn đặt trạng thái PAID</span>
-                  </div>
-
-                  <div className="bg-white border border-[#e6eef0] p-6 rounded-2xl">
-                    <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Hóa đơn đã thanh toán</span>
-                    <span className="text-2xl font-black text-slate-800 mt-2 block">
-                      {adminBookings.filter(b => b.status === 'PAID').length} <span className="text-xs font-normal text-slate-450">đơn</span>
-                    </span>
-                    <span className="text-[10px] text-slate-400 block mt-2">Hệ thống đã tự động gửi vé qua Email</span>
-                  </div>
-
-                  <div className="bg-white border border-[#e6eef0] p-6 rounded-2xl">
-                    <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Hóa đơn đang chờ duyệt (PENDING)</span>
-                    <span className="text-2xl font-black text-amber-600 mt-2 block">
-                      {adminBookings.filter(b => b.status === 'PENDING').length} <span className="text-xs font-normal text-slate-450">đơn</span>
-                    </span>
-                    <span className="text-[10px] text-amber-650 text-amber-600 block mt-2 font-medium animate-pulse">Quét hủy sau 15 phút không thanh toán</span>
-                  </div>
+                {/* Admin Sub Tab switcher bar */}
+                <div className="flex space-x-3 mb-8 border-b border-[#eff6f3] pb-4">
+                  <button 
+                    onClick={() => setAdminTab('bookings')}
+                    className={`text-xs font-bold px-4 py-2.5 rounded-xl transition-all ${adminTab === 'bookings' ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/10' : 'bg-slate-100 text-slate-500 hover:text-slate-800'}`}
+                  >
+                    📊 Đơn hàng & Thống kê
+                  </button>
+                  <button 
+                    onClick={() => setAdminTab('members')}
+                    className={`text-xs font-bold px-4 py-2.5 rounded-xl transition-all ${adminTab === 'members' ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/10' : 'bg-slate-100 text-slate-500 hover:text-slate-800'}`}
+                  >
+                    👥 Quản lý Thành viên (VIP)
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                  {/* Left Column: Analytics & Orders */}
-                  <div className="lg:col-span-2 space-y-8">
-                    
-                    {/* Dynamic Bar Revenue statistics */}
-                    <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm">
-                      <h2 className="text-sm font-bold text-slate-800 mb-4">📊 Báo cáo doanh số tour bán chạy nhất</h2>
-                      
-                      {adminRevenueReports.length === 0 ? (
-                        <div className="py-12 text-center text-xs text-slate-400">
-                          Chưa có dữ liệu thanh toán để thống kê.
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          {adminRevenueReports.map((report, idx) => {
-                            const maxVal = Math.max(...adminRevenueReports.map(r => r.revenue), 1);
-                            const percent = (report.revenue / maxVal) * 100;
-                            return (
-                              <div key={idx} className="space-y-1.5">
-                                <div className="flex justify-between text-xs font-semibold">
-                                  <span className="text-slate-700 truncate max-w-xs">{report.tourTitle}</span>
-                                  <span className="text-emerald-700 font-extrabold">
-                                    {new Intl.NumberFormat('vi-VN').format(report.revenue)} đ{' '}
-                                    <span className="text-slate-400 text-[10px] font-normal">({report.bookingsCount} lượt mua)</span>
-                                  </span>
-                                </div>
-                                <div className="w-full bg-[#f0f6f3] h-4 rounded-full overflow-hidden border border-[#e2ece7]">
-                                  <div 
-                                    className="bg-gradient-to-r from-emerald-600 to-teal-500 h-full rounded-full transition-all duration-1000"
-                                    style={{ width: `${percent}%` }}
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
+                {adminTab === 'bookings' && (
+                  <>
+                    {/* Aggregated indicators */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                      <div className="bg-white border border-[#e6eef0] p-6 rounded-2xl">
+                        <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Tổng doanh thu thực nhận</span>
+                        <span className="text-2xl font-black text-emerald-600 mt-2 block">
+                          {new Intl.NumberFormat('vi-VN').format(
+                            adminBookings
+                              .filter(b => b.status === 'PAID')
+                              .reduce((sum, b) => sum + b.totalPrice, 0)
+                          )} <span className="text-xs font-normal text-slate-450">VND</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400 block mt-2">Dựa trên các đơn đặt trạng thái PAID</span>
+                      </div>
 
-                    {/* Admin Bookings Table */}
-                    <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm overflow-hidden">
-                      <h2 className="text-sm font-bold text-slate-800 mb-4">📋 Lịch sử và trạng thái các đơn đặt vé</h2>
-                      
-                      {adminBookings.length === 0 ? (
-                        <div className="py-12 text-center text-xs text-slate-400">Không có hóa đơn đăng ký.</div>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left text-xs border-collapse">
-                            <thead>
-                              <tr className="border-b border-[#e6eef0] text-slate-400 uppercase tracking-wider font-bold">
-                                <th className="py-3 px-3">Đơn</th>
-                                <th className="py-3 px-3">Khách hàng</th>
-                                <th className="py-3 px-3">Tour du lịch</th>
-                                <th className="py-3 px-3">Vé mua</th>
-                                <th className="py-3 px-3">Tổng tiền</th>
-                                <th className="py-3 px-3">Trạng thái</th>
-                                <th className="py-3 px-3 text-right">Hành động</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {adminBookings.map((b) => (
-                                <tr key={b.id} className="border-b border-[#f0f6f3] hover:bg-slate-50/50 transition-colors">
-                                  <td className="py-3.5 px-3 font-mono font-bold text-slate-800">#{b.id}</td>
-                                  <td className="py-3.5 px-3">
-                                    <div className="font-bold text-slate-800">{b.customerName}</div>
-                                    <div className="text-[10px] text-slate-400">{b.customerEmail} | {b.customerPhone}</div>
-                                  </td>
-                                  <td className="py-3.5 px-3 max-w-[130px] truncate font-semibold">{b.tourTitle}</td>
-                                  <td className="py-3.5 px-3 font-bold">{b.ticketsCount} vé</td>
-                                  <td className="py-3.5 px-3 text-rose-500 font-extrabold">
-                                    {new Intl.NumberFormat('vi-VN').format(b.totalPrice)} đ
-                                  </td>
-                                  <td className="py-3.5 px-3">
-                                    {b.status === 'PAID' && (
-                                      <span className="bg-emerald-50 border border-emerald-100 text-emerald-700 text-[9px] px-2 py-0.5 rounded-full font-bold">Đã thanh toán</span>
-                                    )}
-                                    {b.status === 'PENDING' && (
-                                      <span className="bg-amber-50 border border-amber-100 text-amber-700 text-[9px] px-2 py-0.5 rounded-full font-bold animate-pulse">Chờ thanh toán</span>
-                                    )}
-                                    {b.status === 'CANCELLED' && (
-                                      <span className="bg-slate-100 border border-slate-200 text-slate-400 text-[9px] px-2 py-0.5 rounded-full font-bold">Đã hủy</span>
-                                    )}
-                                  </td>
-                                  <td className="py-3.5 px-3 text-right">
-                                    {b.status === 'PENDING' && (
-                                      <div className="flex space-x-1 justify-end">
-                                        <button 
-                                          onClick={() => adminApproveBooking(b.id)}
-                                          className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg"
-                                        >
-                                          Duyệt
-                                        </button>
-                                        <button 
-                                          onClick={() => adminCancelBooking(b.id)}
-                                          className="bg-slate-100 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 hover:border-rose-200 text-slate-500 text-[10px] font-bold px-2 py-1 rounded-lg"
-                                        >
-                                          Hủy
-                                        </button>
-                                      </div>
-                                    )}
-                                    {b.status === 'PAID' && (
-                                      <button 
-                                        onClick={() => adminCancelBooking(b.id)}
-                                        className="text-[10px] text-slate-400 hover:text-rose-600 font-bold"
-                                      >
-                                        Hủy đơn
-                                      </button>
-                                    )}
-                                    {b.status === 'CANCELLED' && (
-                                      <span className="text-[10px] text-slate-400 italic">Đã hủy bỏ</span>
-                                    )}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                      <div className="bg-white border border-[#e6eef0] p-6 rounded-2xl">
+                        <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Hóa đơn đã thanh toán</span>
+                        <span className="text-2xl font-black text-slate-800 mt-2 block">
+                          {adminBookings.filter(b => b.status === 'PAID').length} <span className="text-xs font-normal text-slate-450">đơn</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400 block mt-2">Hệ thống đã tự động gửi vé qua Email</span>
+                      </div>
 
-                  {/* Right Column: Tours list for CRUD editing */}
-                  <div className="space-y-8">
-                    <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm">
-                      <h2 className="text-sm font-bold text-slate-800 mb-4">🌍 Kho dữ liệu Tour hiện hoạt</h2>
-                      
-                      <div className="space-y-4">
-                        {tours.map((t) => (
-                          <div key={t.id} className="bg-[#f8faf9] border border-[#e2ece7] p-4 rounded-2xl space-y-3">
-                            <div className="flex items-center space-x-3">
-                              <img 
-                                src={t.image} 
-                                alt={t.title} 
-                                className="w-12 h-12 object-cover rounded-lg border border-[#e2ece7]"
-                                onError={(e) => {
-                                  e.target.src = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80";
-                                }}
-                              />
-                              <div className="flex-1 min-w-0">
-                                <h3 className="text-xs font-bold text-slate-800 truncate">{t.title}</h3>
-                                <span className="text-[10px] text-slate-400 mt-1 block">📍 {t.destination}</span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-between text-[10px] border-t border-[#eff6f3] pt-2">
-                              <span className="text-slate-500">Chỗ trống: <strong className="text-slate-700">{t.availableSlots}</strong></span>
-                              <span className="text-rose-500 font-extrabold">{new Intl.NumberFormat('vi-VN').format(t.price)} đ</span>
-                            </div>
-
-                            <div className="flex space-x-2 pt-1">
-                              <button 
-                                onClick={() => openEditTour(t)}
-                                className="flex-1 bg-white hover:bg-slate-550 hover:bg-slate-100 text-slate-600 text-[10px] font-bold py-1.5 rounded-lg border border-[#e2ece7] transition-all"
-                              >
-                                ✏️ Sửa
-                              </button>
-                              <button 
-                                onClick={() => softDeleteTour(t.id)}
-                                className="flex-1 bg-[#fff5f5] hover:bg-[#ffebeb] text-rose-600 text-[10px] font-bold py-1.5 rounded-lg border border-[#ffd6d6] transition-all"
-                              >
-                                🗑️ Xóa mềm
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                      <div className="bg-white border border-[#e6eef0] p-6 rounded-2xl">
+                        <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Hóa đơn đang chờ duyệt (PENDING)</span>
+                        <span className="text-2xl font-black text-amber-600 mt-2 block">
+                          {adminBookings.filter(b => b.status === 'PENDING').length} <span className="text-xs font-normal text-slate-450">đơn</span>
+                        </span>
+                        <span className="text-[10px] text-amber-655 text-amber-600 block mt-2 font-medium animate-pulse">Quét hủy sau 15 phút không thanh toán</span>
                       </div>
                     </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                      {/* Left Column: Analytics & Orders */}
+                      <div className="lg:col-span-2 space-y-8">
+                        
+                        {/* Dynamic Bar Revenue statistics */}
+                        <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm">
+                          <h2 className="text-sm font-bold text-slate-800 mb-4">📊 Báo cáo doanh số tour bán chạy nhất</h2>
+                          
+                          {adminRevenueReports.length === 0 ? (
+                            <div className="py-12 text-center text-xs text-slate-400">
+                              Chưa có dữ liệu thanh toán để thống kê.
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              {adminRevenueReports.map((report, idx) => {
+                                const maxVal = Math.max(...adminRevenueReports.map(r => r.revenue), 1);
+                                const percent = (report.revenue / maxVal) * 100;
+                                return (
+                                  <div key={idx} className="space-y-1.5">
+                                    <div className="flex justify-between text-xs font-semibold">
+                                      <span className="text-slate-700 truncate max-w-xs">{report.tourTitle}</span>
+                                      <span className="text-emerald-700 font-extrabold">
+                                        {new Intl.NumberFormat('vi-VN').format(report.revenue)} đ{' '}
+                                        <span className="text-slate-400 text-[10px] font-normal">({report.bookingsCount} lượt mua)</span>
+                                      </span>
+                                    </div>
+                                    <div className="w-full bg-[#f0f6f3] h-4 rounded-full overflow-hidden border border-[#e2ece7]">
+                                      <div 
+                                        className="bg-gradient-to-r from-emerald-600 to-teal-500 h-full rounded-full transition-all duration-1000"
+                                        style={{ width: `${percent}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Admin Bookings Table */}
+                        <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm overflow-hidden">
+                          <h2 className="text-sm font-bold text-slate-800 mb-4">📋 Lịch sử và trạng thái các đơn đặt vé</h2>
+                          
+                          {adminBookings.length === 0 ? (
+                            <div className="py-12 text-center text-xs text-slate-400">Không có hóa đơn đăng ký.</div>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-xs border-collapse">
+                                <thead>
+                                  <tr className="border-b border-[#e6eef0] text-slate-400 uppercase tracking-wider font-bold">
+                                    <th className="py-3 px-3">Đơn</th>
+                                    <th className="py-3 px-3">Khách hàng</th>
+                                    <th className="py-3 px-3">Tour du lịch</th>
+                                    <th className="py-3 px-3">Vé mua</th>
+                                    <th className="py-3 px-3">Tổng tiền</th>
+                                    <th className="py-3 px-3">Trạng thái</th>
+                                    <th className="py-3 px-3 text-right">Hành động</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {adminBookings.map((b) => (
+                                    <tr key={b.id} className="border-b border-[#f0f6f3] hover:bg-slate-50/50 transition-colors">
+                                      <td className="py-3.5 px-3 font-mono font-bold text-slate-800">#{b.id}</td>
+                                      <td className="py-3.5 px-3">
+                                        <div className="font-bold text-slate-800">{b.customerName}</div>
+                                        <div className="text-[10px] text-slate-400">{b.customerEmail} | {b.customerPhone}</div>
+                                      </td>
+                                      <td className="py-3.5 px-3 max-w-[130px] truncate font-semibold">{b.tourTitle}</td>
+                                      <td className="py-3.5 px-3 font-bold">{b.ticketsCount} vé</td>
+                                      <td className="py-3.5 px-3 text-rose-500 font-extrabold">
+                                        {formatPrice(b.totalPrice)}
+                                      </td>
+                                      <td className="py-3.5 px-3">
+                                        {b.status === 'PAID' && (
+                                          <span className="bg-emerald-50 border border-emerald-100 text-emerald-700 text-[9px] px-2 py-0.5 rounded-full font-bold">Đã thanh toán</span>
+                                        )}
+                                        {b.status === 'PENDING' && (
+                                          <span className="bg-amber-50 border border-amber-100 text-amber-700 text-[9px] px-2 py-0.5 rounded-full font-bold animate-pulse">Chờ thanh toán</span>
+                                        )}
+                                        {b.status === 'CANCELLED' && (
+                                          <span className="bg-slate-100 border border-slate-200 text-slate-400 text-[9px] px-2 py-0.5 rounded-full font-bold">Đã hủy</span>
+                                        )}
+                                      </td>
+                                      <td className="py-3.5 px-3 text-right">
+                                        {b.status === 'PENDING' && (
+                                          <div className="flex space-x-1 justify-end">
+                                            <button 
+                                              onClick={() => adminApproveBooking(b.id)}
+                                              className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg"
+                                            >
+                                              Duyệt
+                                            </button>
+                                            <button 
+                                              onClick={() => adminCancelBooking(b.id)}
+                                              className="bg-slate-100 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 hover:border-rose-200 text-slate-500 text-[10px] font-bold px-2 py-1 rounded-lg"
+                                            >
+                                              Hủy
+                                            </button>
+                                          </div>
+                                        )}
+                                        {b.status === 'PAID' && (
+                                          <button 
+                                            onClick={() => adminCancelBooking(b.id)}
+                                            className="text-[10px] text-slate-450 text-slate-400 hover:text-rose-600 font-bold"
+                                          >
+                                            Hủy đơn
+                                          </button>
+                                        )}
+                                        {b.status === 'CANCELLED' && (
+                                          <span className="text-[10px] text-slate-400 italic">Đã hủy bỏ</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right Column: Tours list for CRUD editing */}
+                      <div className="space-y-8">
+                        <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm">
+                          <h2 className="text-sm font-bold text-slate-800 mb-4">🌍 Kho dữ liệu Tour hiện hoạt</h2>
+                          
+                          <div className="space-y-4">
+                            {tours.map((t) => (
+                              <div key={t.id} className="bg-[#f8faf9] border border-[#e2ece7] p-4 rounded-2xl space-y-3">
+                                <div className="flex items-center space-x-3">
+                                  <img 
+                                    src={t.image} 
+                                    alt={t.title} 
+                                    className="w-12 h-12 object-cover rounded-lg border border-[#e2ece7]"
+                                    onError={(e) => {
+                                      e.target.src = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80";
+                                    }}
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <h3 className="text-xs font-bold text-slate-800 truncate">{t.title}</h3>
+                                    <span className="text-[10px] text-slate-400 mt-1 block">📍 {t.destination}</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-between text-[10px] border-t border-[#eff6f3] pt-2">
+                                  <span className="text-slate-550 text-slate-500 font-medium">Chỗ trống: <strong className="text-slate-700">{t.availableSlots}</strong></span>
+                                  <span className="text-rose-500 font-extrabold">{formatPrice(t.price)}</span>
+                                </div>
+
+                                <div className="flex space-x-2 pt-1">
+                                  <button 
+                                    onClick={() => openEditTour(t)}
+                                    className="flex-1 bg-white hover:bg-slate-100 text-slate-600 text-[10px] font-bold py-1.5 rounded-lg border border-[#e2ece7] transition-all"
+                                  >
+                                    ✏️ Sửa
+                                  </button>
+                                  <button 
+                                    onClick={() => softDeleteTour(t.id)}
+                                    className="flex-1 bg-[#fff5f5] hover:bg-[#ffebeb] text-rose-600 text-[10px] font-bold py-1.5 rounded-lg border border-[#ffd6d6] transition-all"
+                                  >
+                                    🗑️ Xóa mềm
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {adminTab === 'members' && (
+                  <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm overflow-hidden animate-scaleIn">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 mb-4 border-b border-[#f0f6f3]">
+                      <div>
+                        <h2 className="text-sm font-bold text-slate-800">👥 Danh sách Thành viên & Thẻ VIP</h2>
+                        <p className="text-[11px] text-slate-400 mt-1">Danh sách thành viên đăng ký ứng dụng, tích lũy điểm và hưởng ưu đãi VIP.</p>
+                      </div>
+                      <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 font-extrabold text-[10px] px-3 py-1.5 rounded-full">
+                        Tổng số: {adminMembers.length} thành viên
+                      </span>
+                    </div>
+
+                    {adminMembers.length === 0 ? (
+                      <div className="py-12 text-center text-xs text-slate-400">Không có thành viên đăng ký.</div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-b border-[#e6eef0] text-slate-400 uppercase tracking-wider font-bold">
+                              <th className="py-3 px-3">Họ và tên</th>
+                              <th className="py-3 px-3">Tên đăng nhập</th>
+                              <th className="py-3 px-3">Hạng thẻ</th>
+                              <th className="py-3 px-3">Điểm hiện tại</th>
+                              <th className="py-3 px-3">Điểm tích lũy</th>
+                              <th className="py-3 px-3">Số Tour đi</th>
+                              <th className="py-3 px-3 text-right">Thao tác</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {adminMembers.map((member) => (
+                              <tr key={member.id} className="border-b border-[#f0f6f3] hover:bg-slate-50/50 transition-colors">
+                                <td className="py-3.5 px-3">
+                                  <div className="font-bold text-slate-800">{member.fullName || 'Chưa cập nhật'}</div>
+                                  <div className="text-[10px] text-slate-400">{member.email} | {member.phoneNumber || 'Chưa có SĐT'}</div>
+                                </td>
+                                <td className="py-3.5 px-3 font-mono font-bold text-slate-650">{member.username}</td>
+                                <td className="py-3.5 px-3">
+                                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+                                    member.membershipType === 'GOLD' 
+                                      ? 'bg-yellow-50 text-yellow-700 border-yellow-200 shadow-sm' 
+                                      : member.membershipType === 'SILVER' 
+                                        ? 'bg-slate-50 text-slate-700 border-slate-200' 
+                                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                                  }`}>
+                                    {member.membershipType}
+                                  </span>
+                                </td>
+                                <td className="py-3.5 px-3 font-extrabold text-slate-800">{member.currentPoints} pts</td>
+                                <td className="py-3.5 px-3 font-bold text-slate-500">{member.totalPointsAccumulated} pts</td>
+                                <td className="py-3.5 px-3 font-bold text-slate-500">{member.totalToursParticipated} tours</td>
+                                <td className="py-3.5 px-3 text-right space-x-2">
+                                  <button 
+                                    onClick={() => {
+                                      setAdjustingMember(member);
+                                      setAdjustPointsChange('');
+                                      setAdjustReason('');
+                                      setShowPointsAdjustModal(true);
+                                    }}
+                                    className="bg-[#f0f6f3] hover:bg-[#e2ece7] text-emerald-700 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all"
+                                  >
+                                    ✏️ Sửa điểm
+                                  </button>
+                                  <button 
+                                    onClick={() => fetchMemberHistory(member.id)}
+                                    className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all"
+                                  >
+                                    📜 Lịch sử
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
               </div>
             )}
           </div>
@@ -1362,10 +1712,80 @@ export default function App() {
 
         {/* TAB 6: User Profile Settings */}
         {activeTab === 'user-profile' && (
-          <div className="max-w-md mx-auto my-12 bg-white border border-[#e6eef0] p-8 rounded-3xl shadow-sm relative overflow-hidden">
+          <div className="max-w-2xl mx-auto my-12 bg-white border border-[#e6eef0] p-8 rounded-3xl shadow-sm relative overflow-hidden">
             <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-600 to-teal-500" />
-            <h2 className="text-xl font-extrabold text-slate-800 text-center">Thông tin cá nhân</h2>
-            <p className="text-slate-400 text-[11px] text-center mt-2">Cập nhật email và thay đổi mật khẩu tài khoản của bạn</p>
+            
+            {/* VIP Membership Card Display */}
+            {userProfile && (
+              <div className={`relative rounded-3xl overflow-hidden shadow-xl p-6 text-white mb-8 border border-white/10 ${
+                userProfile.membershipType === 'GOLD' 
+                  ? 'bg-gradient-to-br from-yellow-600 via-amber-500 to-yellow-500 shadow-yellow-600/20' 
+                  : userProfile.membershipType === 'SILVER' 
+                    ? 'bg-gradient-to-br from-slate-600 via-slate-500 to-slate-400 shadow-slate-500/15'
+                    : 'bg-gradient-to-br from-amber-900 to-amber-700 shadow-amber-950/10'
+              }`}>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="text-[10px] uppercase font-black tracking-widest bg-white/20 px-2.5 py-1 rounded-full backdrop-blur-xs">
+                      🍀 E-TOUR VIP MEMBER CARD
+                    </span>
+                    <h3 className="text-xl font-black tracking-wide mt-3">{userProfile.fullName}</h3>
+                    <p className="text-[11px] opacity-75 mt-0.5">Mã thành viên: #{username}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-2xl font-black block tracking-widest">{userProfile.membershipType}</span>
+                    <span className="text-[9px] uppercase tracking-wider opacity-85 block mt-1">Hạng thành viên</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 border-t border-white/20 pt-5 mt-6 text-center">
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider block opacity-75">Tour đã đi</span>
+                    <strong className="text-base font-black block mt-1">{userProfile.totalToursParticipated} chuyến</strong>
+                  </div>
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider block opacity-75">Tích lũy lịch sử</span>
+                    <strong className="text-base font-black block mt-1">{userProfile.totalPointsAccumulated} pts</strong>
+                  </div>
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider block opacity-75">Điểm khả dụng</span>
+                    <strong className="text-base font-black block mt-1">{userProfile.currentPoints} pts</strong>
+                  </div>
+                </div>
+
+                {/* Progress bar to next level */}
+                <div className="mt-6 space-y-2">
+                  <div className="flex justify-between text-[10px] font-bold">
+                    <span>Hạng tiếp theo: {userProfile.membershipType === 'GOLD' ? 'CẤP ĐỘ CAO NHẤT' : userProfile.membershipType === 'SILVER' ? 'GOLD (5,000 pts)' : 'SILVER (1,000 pts)'}</span>
+                    <span>{userProfile.membershipType === 'GOLD' ? 'Đã đạt VIP tối đa' : `Cần thêm ${userProfile.pointsNeededToNextLevel} pts`}</span>
+                  </div>
+                  <div className="w-full bg-white/20 h-2 rounded-full overflow-hidden">
+                    <div 
+                      className="bg-white h-full rounded-full transition-all duration-1000"
+                      style={{ 
+                        width: userProfile.membershipType === 'GOLD' 
+                          ? '100%' 
+                          : userProfile.membershipType === 'SILVER'
+                            ? `${Math.min(100, (userProfile.currentPoints / 5000) * 100)}%`
+                            : `${Math.min(100, (userProfile.currentPoints / 1000) * 100)}%`
+                      }}
+                    />
+                  </div>
+                  <p className="text-[9px] opacity-85 leading-normal mt-2">
+                    🌟 Quyền lợi: {
+                      userProfile.membershipType === 'GOLD' 
+                        ? 'Giảm trực tiếp 5% cho tất cả các tour đang ưu đãi kịch sàn + Ưu tiên hỗ trợ VIP.' 
+                        : userProfile.membershipType === 'SILVER'
+                          ? 'Giảm trực tiếp 3% cho tất cả các tour đang ưu đãi kịch sàn.'
+                          : 'Quyền lợi cơ bản, tích lũy 1 điểm cho mỗi 100.000 đ chi tiêu thực nhận.'
+                    }
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <h2 className="text-lg font-extrabold text-slate-800 text-center">Thông tin chi tiết tài khoản</h2>
+            <p className="text-slate-400 text-[11px] text-center mt-1">Cập nhật hồ sơ cá nhân, số chứng minh, hộ chiếu của bạn</p>
 
             {profileLoading && !profileEmail ? (
               <div className="flex flex-col items-center justify-center py-12">
@@ -1373,77 +1793,215 @@ export default function App() {
                 <span className="text-xs text-slate-400">Đang tải thông tin...</span>
               </div>
             ) : (
-              <form className="mt-6 space-y-4" onSubmit={handleUpdateProfile}>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Tên đăng nhập (Username)</label>
-                  <input 
-                    type="text" 
-                    value={username}
-                    disabled
-                    className="w-full bg-slate-50 border border-[#e2ece7] text-slate-400 rounded-xl px-4 py-3 text-xs outline-none cursor-not-allowed font-semibold"
-                  />
+              <form className="mt-6 space-y-6" onSubmit={handleUpdateProfile}>
+                
+                {/* Section 1: Thông tin chung */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-[#eff6f3] pb-2">📂 1. Thông tin cá nhân cơ bản</h3>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Tên đăng nhập (Username)</label>
+                      <input 
+                        type="text" 
+                        value={username}
+                        disabled
+                        className="w-full bg-slate-50 border border-[#e2ece7] text-slate-400 rounded-xl px-4 py-2.5 text-xs outline-none cursor-not-allowed font-semibold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Họ và tên bắt buộc</label>
+                      <input 
+                        type="text" 
+                        required
+                        value={profileFullName}
+                        onChange={(e) => setProfileFullName(e.target.value)}
+                        placeholder="Nguyễn Văn A"
+                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Số điện thoại bắt buộc</label>
+                      <input 
+                        type="text" 
+                        required
+                        value={profilePhoneNumber}
+                        onChange={(e) => setProfilePhoneNumber(e.target.value)}
+                        placeholder="Ví dụ: 0987654321"
+                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Địa chỉ Email bắt buộc</label>
+                      <input 
+                        type="email" 
+                        required
+                        value={profileEmail}
+                        onChange={(e) => setProfileEmail(e.target.value)}
+                        placeholder="name@domain.com"
+                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Giới tính bắt buộc</label>
+                      <select 
+                        required
+                        value={profileGender}
+                        onChange={(e) => setProfileGender(e.target.value)}
+                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors cursor-pointer"
+                      >
+                        <option value="Nam">Nam</option>
+                        <option value="Nữ">Nữ</option>
+                        <option value="Khác">Khác</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ngày sinh bắt buộc</label>
+                      <input 
+                        type="date" 
+                        required
+                        value={profileBirthDate}
+                        onChange={(e) => setProfileBirthDate(e.target.value)}
+                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors cursor-pointer"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Quốc tịch</label>
+                      <input 
+                        type="text" 
+                        value={profileNationality}
+                        onChange={(e) => setProfileNationality(e.target.value)}
+                        placeholder="Việt Nam"
+                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Địa chỉ liên hệ</label>
+                      <input 
+                        type="text" 
+                        value={profileAddress}
+                        onChange={(e) => setProfileAddress(e.target.value)}
+                        placeholder="Địa chỉ cụ thể của bạn"
+                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Họ và tên</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={profileFullName}
-                    onChange={(e) => setProfileFullName(e.target.value)}
-                    placeholder="Nguyễn Văn A"
-                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
-                  />
+                {/* Section 2: Identity Documents */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-[#eff6f3] pb-2">💳 2. Căn cước công dân & Hộ chiếu</h3>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Số CCCD / CMND</label>
+                      <input 
+                        type="text" 
+                        value={profileCccd}
+                        onChange={(e) => setProfileCccd(e.target.value)}
+                        placeholder="Số CCCD 12 số"
+                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ngày cấp CCCD</label>
+                      <input 
+                        type="date" 
+                        value={profileCccdIssueDate}
+                        onChange={(e) => setProfileCccdIssueDate(e.target.value)}
+                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Nơi cấp CCCD</label>
+                      <input 
+                        type="text" 
+                        value={profileCccdIssuePlace}
+                        onChange={(e) => setProfileCccdIssuePlace(e.target.value)}
+                        placeholder="Cục Cảnh Sát..."
+                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Số Hộ chiếu (Passport)</label>
+                      <input 
+                        type="text" 
+                        value={profilePassport}
+                        onChange={(e) => setProfilePassport(e.target.value)}
+                        placeholder="Mã số Hộ chiếu"
+                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ngày cấp Hộ chiếu</label>
+                      <input 
+                        type="date" 
+                        value={profilePassportIssueDate}
+                        onChange={(e) => setProfilePassportIssueDate(e.target.value)}
+                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ngày hết hạn Hộ chiếu</label>
+                      <input 
+                        type="date" 
+                        value={profilePassportExpiryDate}
+                        onChange={(e) => setProfilePassportExpiryDate(e.target.value)}
+                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors cursor-pointer"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Số điện thoại</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={profilePhoneNumber}
-                    onChange={(e) => setProfilePhoneNumber(e.target.value)}
-                    placeholder="Ví dụ: 0987654321"
-                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
-                  />
+                {/* Section 3: Password confirmation */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-[#eff6f3] pb-2">🔑 3. Thay đổi mật khẩu & Xác thực</h3>
+                  
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Mật khẩu mới (Bỏ trống nếu không muốn thay đổi)</label>
+                    <input 
+                      type="password" 
+                      value={profileNewPassword}
+                      onChange={(e) => setProfileNewPassword(e.target.value)}
+                      placeholder="Tối thiểu 6 ký tự"
+                      className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
+                    />
+                  </div>
+
+                  <div className="bg-rose-50/50 border border-rose-100 p-4 rounded-2xl">
+                    <label className="block text-[10px] font-bold text-rose-600 uppercase tracking-wider mb-2">Nhập Mật khẩu hiện tại bắt buộc (Để lưu thay đổi)</label>
+                    <input 
+                      type="password" 
+                      required
+                      value={profileOldPassword}
+                      onChange={(e) => setProfileOldPassword(e.target.value)}
+                      placeholder="Nhập mật khẩu hiện tại của bạn"
+                      className="w-full bg-white border border-rose-200 focus:border-rose-400 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Địa chỉ Email</label>
-                  <input 
-                    type="email" 
-                    required
-                    value={profileEmail}
-                    onChange={(e) => setProfileEmail(e.target.value)}
-                    placeholder="name@domain.com"
-                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Mật khẩu mới (Bỏ trống nếu không đổi)</label>
-                  <input 
-                    type="password" 
-                    value={profileNewPassword}
-                    onChange={(e) => setProfileNewPassword(e.target.value)}
-                    placeholder="Tối thiểu 6 ký tự"
-                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
-                  />
-                </div>
-
-                <div className="border-t border-[#f0f6f3] pt-4 mt-6">
-                  <label className="block text-[10px] font-bold text-rose-500 uppercase tracking-wider mb-2">Mật khẩu hiện tại (Xác thực bảo mật)</label>
-                  <input 
-                    type="password" 
-                    required
-                    value={profileOldPassword}
-                    onChange={(e) => setProfileOldPassword(e.target.value)}
-                    placeholder="Nhập mật khẩu hiện tại của bạn"
-                    className="w-full bg-[#fdf8f8] border border-rose-100 focus:border-rose-400 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
-                  />
-                </div>
-
-                <div className="flex space-x-3 pt-2">
+                <div className="flex space-x-3 pt-4 border-t border-[#f0f6f3]">
                   <button 
                     type="button"
                     onClick={() => {
@@ -1460,7 +2018,7 @@ export default function App() {
                     disabled={profileLoading}
                     className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-xs font-bold text-white py-3.5 rounded-xl shadow-md shadow-emerald-600/10 hover:shadow-lg transition-all"
                   >
-                    {profileLoading ? 'Đang lưu...' : 'Lưu thay đổi'}
+                    {profileLoading ? 'Đang lưu...' : 'Lưu tất cả thông tin'}
                   </button>
                 </div>
               </form>
@@ -1501,7 +2059,18 @@ export default function App() {
                 <h3 className="text-lg font-bold text-slate-800">{selectedTourDetail.title}</h3>
                 <div className="flex items-center justify-between text-xs text-slate-400 mt-2 pb-2.5 border-b border-[#f0f6f3]">
                   <span>Ngày khởi hành: <strong className="text-slate-700">{selectedTourDetail.departureDate}</strong></span>
-                  <span>Mức giá gốc: <strong className="text-rose-500">{new Intl.NumberFormat('vi-VN').format(selectedTourDetail.price)} đ</strong></span>
+                  <span>
+                    Mức giá: {' '}
+                    {selectedTourDetail.discountPercent > 0 ? (
+                      <strong className="text-rose-500">
+                        <span className="line-through text-slate-400 mr-2 text-[10px]">{formatPrice(selectedTourDetail.price)}</span>
+                        {formatPrice(selectedTourDetail.price * (100 - selectedTourDetail.discountPercent) / 100)}
+                        <span className="ml-2 text-[9px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-black">-{selectedTourDetail.discountPercent}%</span>
+                      </strong>
+                    ) : (
+                      <strong className="text-rose-500">{formatPrice(selectedTourDetail.price)}</strong>
+                    )}
+                  </span>
                 </div>
               </div>
 
@@ -1586,7 +2155,14 @@ export default function App() {
                     <div className="flex items-center justify-between border-t border-[#eff6f3] pt-2 text-xs">
                       <div>
                         <span className="text-[10px] text-slate-400 block">Đơn giá</span>
-                        <span className="font-bold text-slate-700">{new Intl.NumberFormat('vi-VN').format(item.tour.price)} đ</span>
+                        {item.tour.discountPercent > 0 ? (
+                          <span className="font-bold text-slate-700">
+                            <span className="line-through text-slate-400 mr-1.5 text-[10px]">{formatPrice(item.tour.price)}</span>
+                            {formatPrice(getBookingPromoPrice(item.tour))}
+                          </span>
+                        ) : (
+                          <span className="font-bold text-slate-700">{formatPrice(item.tour.price)}</span>
+                        )}
                       </div>
 
                       {/* Ticket counts adjustments */}
@@ -1608,7 +2184,10 @@ export default function App() {
 
                       <div className="text-right">
                         <span className="text-[10px] text-slate-400 block">Thành tiền</span>
-                        <span className="font-extrabold text-rose-500">{new Intl.NumberFormat('vi-VN').format(item.tour.price * item.ticketsCount)} đ</span>
+                        <span className="font-extrabold text-rose-500">{formatPrice(getBookingFinalPrice(item.tour, item.ticketsCount))}</span>
+                        {userProfile && item.tour.discountPercent > 0 && (userProfile.membershipType === 'SILVER' || userProfile.membershipType === 'GOLD') && (
+                          <span className="text-[8px] text-emerald-600 font-bold block">(Đã giảm VIP {userProfile.membershipType === 'SILVER' ? '3%' : '5%'})</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1620,8 +2199,8 @@ export default function App() {
             {cart.length > 0 && (
               <div className="p-6 border-t border-[#f0f6f3] bg-[#f8faf9] space-y-4">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-500 font-medium">Tổng tạm tính:</span>
-                  <strong className="text-lg font-black text-rose-500">{new Intl.NumberFormat('vi-VN').format(getCartTotal())} VND</strong>
+                  <span className="text-slate-550 text-slate-500 font-medium">Tổng tạm tính:</span>
+                  <strong className="text-lg font-black text-rose-500">{formatPrice(getCartTotal())}</strong>
                 </div>
 
                 <div className="flex space-x-2">
@@ -1685,13 +2264,19 @@ export default function App() {
               <div className="bg-[#f8faf9] border border-[#e2ece7] p-4 rounded-2xl mb-4 space-y-2 text-xs">
                 <div className="font-bold text-slate-700">🛒 Tour đang đăng ký thanh toán:</div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">{cart[0].tour.title}</span>
+                  <span className="text-slate-550 text-slate-500">{cart[0].tour.title}</span>
                   <strong className="text-slate-850 text-slate-800">{cart[0].ticketsCount} vé</strong>
                 </div>
                 <div className="flex justify-between border-t border-[#eff6f3] pt-2 font-bold text-rose-500">
                   <span>Tổng tiền thanh toán:</span>
-                  <span>{new Intl.NumberFormat('vi-VN').format(cart[0].tour.price * cart[0].ticketsCount)} đ</span>
+                  <span>{formatPrice(getBookingFinalPrice(cart[0].tour, cart[0].ticketsCount))}</span>
                 </div>
+                {userProfile && cart[0].tour.discountPercent > 0 && (userProfile.membershipType === 'SILVER' || userProfile.membershipType === 'GOLD') && (
+                  <div className="flex justify-between text-[10px] text-emerald-600 font-bold">
+                    <span>Quyền lợi giảm VIP {userProfile.membershipType}:</span>
+                    <span>-{userProfile.membershipType === 'SILVER' ? '3%' : '5%'}</span>
+                  </div>
+                )}
               </div>
 
               <form onSubmit={handleCartCheckoutSubmit} className="space-y-4">
@@ -1798,8 +2383,8 @@ export default function App() {
                   <strong className="text-slate-800">{activeInvoice.customerName}</strong>
                 </div>
                 <div className="flex justify-between border-t border-[#eff6f3] pt-2">
-                  <span className="text-slate-550 text-slate-500 font-bold">Tổng số tiền cần quét:</span>
-                  <strong className="text-rose-500 font-black text-sm">{new Intl.NumberFormat('vi-VN').format(activeInvoice.totalPrice)} đ</strong>
+                  <span className="text-slate-555 text-slate-500 font-bold">Tổng số tiền cần quét:</span>
+                  <strong className="text-rose-500 font-black text-sm">{formatPrice(activeInvoice.totalPrice)}</strong>
                 </div>
                 <div className="text-[10px] text-amber-600 bg-amber-50 border border-amber-100 p-2.5 rounded-xl text-center leading-relaxed mt-2 animate-pulse">
                   ⚠️ Lưu ý: Quá 15 phút không hoàn tất chuyển tiền, hệ thống Scheduler sẽ tự động hủy đơn giữ chỗ này!
@@ -1949,6 +2534,136 @@ export default function App() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP MODAL: Points Adjustment CRM Modal */}
+      {showPointsAdjustModal && adjustingMember && (
+        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-[#e6eef0] w-full max-w-md rounded-3xl shadow-xl overflow-hidden relative animate-scaleIn">
+            <div className="absolute top-0 inset-x-0 h-1.5 bg-emerald-600" />
+            
+            <div className="p-6">
+              <div className="flex items-center justify-between border-b border-[#f0f6f3] pb-4 mb-4">
+                <h3 className="text-base font-extrabold text-slate-800">✏️ Điều chỉnh điểm thành viên</h3>
+                <button 
+                  onClick={() => {
+                    setShowPointsAdjustModal(false);
+                    setAdjustingMember(null);
+                  }}
+                  className="text-slate-400 hover:text-slate-700 font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="bg-[#f8faf9] border border-[#e2ece7] p-4 rounded-2xl mb-4 text-xs">
+                <div>Thành viên: <strong>{adjustingMember.fullName}</strong> (Username: <span className="font-mono">{adjustingMember.username}</span>)</div>
+                <div className="mt-1">Hạng thẻ hiện tại: <strong className="text-emerald-700">{adjustingMember.membershipType}</strong></div>
+                <div className="mt-1">Số điểm khả dụng: <strong className="text-emerald-700">{adjustingMember.currentPoints} pts</strong></div>
+              </div>
+
+              <form onSubmit={handleAdjustPointsSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Số điểm thay đổi (Có thể nhập số âm hoặc dương)</label>
+                  <input 
+                    type="number"
+                    required
+                    placeholder="Ví dụ: 500 hoặc -200"
+                    value={adjustPointsChange}
+                    onChange={(e) => setAdjustPointsChange(e.target.value)}
+                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
+                  />
+                  <p className="text-[9px] text-slate-400 mt-1">Lưu ý: Điểm khả dụng sau khi trừ không bao giờ âm (nhỏ nhất là 0). Tự động cập nhật hạng VIP.</p>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Lý do điều chỉnh</label>
+                  <textarea 
+                    rows="3"
+                    required
+                    placeholder="Nhập lý do điều chỉnh điểm..."
+                    value={adjustReason}
+                    onChange={(e) => setAdjustReason(e.target.value)}
+                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors resize-none"
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-3 pt-4 border-t border-[#f0f6f3]">
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setShowPointsAdjustModal(false);
+                      setAdjustingMember(null);
+                    }}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-650 text-xs font-bold px-5 py-2.5 rounded-xl transition-all"
+                  >
+                    Hủy
+                  </button>
+                  <button 
+                    type="submit"
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-md transition-all"
+                  >
+                    Xác nhận thay đổi
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP MODAL: Member Point History Audit Log */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-[#e6eef0] w-full max-w-lg rounded-3xl shadow-xl overflow-hidden relative animate-scaleIn">
+            <div className="absolute top-0 inset-x-0 h-1.5 bg-emerald-600" />
+            
+            <div className="p-6">
+              <div className="flex items-center justify-between border-b border-[#f0f6f3] pb-4 mb-4">
+                <h3 className="text-base font-extrabold text-slate-800">📜 Lịch sử thay đổi điểm (Audit Log)</h3>
+                <button 
+                  onClick={() => setShowHistoryModal(false)}
+                  className="text-slate-400 hover:text-slate-700 font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto space-y-3">
+                {selectedMemberHistory.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">Thành viên chưa có lịch sử biến động điểm.</div>
+                ) : (
+                  selectedMemberHistory.map((log) => (
+                    <div key={log.id} className="bg-[#f8faf9] border border-[#e2ece7] p-3.5 rounded-2xl flex justify-between items-start text-xs animate-scaleIn">
+                      <div className="space-y-1 pr-4 text-left">
+                        <div className="font-bold text-slate-700">{log.reason}</div>
+                        <div className="text-[10px] text-slate-400">
+                          {new Date(log.createdAt).toLocaleString('vi-VN')}
+                        </div>
+                      </div>
+                      <span className={`font-black text-sm px-2 py-0.5 rounded-lg flex-shrink-0 ${
+                        log.pointsChange > 0 
+                          ? 'bg-emerald-50 text-emerald-700' 
+                          : 'bg-rose-50 text-rose-700'
+                      }`}>
+                        {log.pointsChange > 0 ? `+${log.pointsChange}` : log.pointsChange} pts
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="flex justify-end pt-4 border-t border-[#f0f6f3] mt-4">
+                <button 
+                  onClick={() => setShowHistoryModal(false)}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-6 py-2.5 rounded-xl transition-all shadow-md"
+                >
+                  Đóng lịch sử
+                </button>
+              </div>
             </div>
           </div>
         </div>

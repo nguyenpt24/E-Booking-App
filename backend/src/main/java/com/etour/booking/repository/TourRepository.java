@@ -18,7 +18,7 @@ public interface TourRepository extends JpaRepository<Tour, Long> {
 
     // Dynamically filter tours by destination, max price, and departure date
     @Query("SELECT t FROM Tour t WHERE t.deleted = false " +
-            "AND (:destination IS NULL OR LOWER(t.destination) LIKE LOWER(CONCAT('%', :destination, '%'))) " +
+            "AND (cast(:destination as string) IS NULL OR LOWER(t.destination) LIKE LOWER(CONCAT('%', cast(:destination as string), '%'))) " +
             "AND (:maxPrice IS NULL OR t.price <= :maxPrice) " +
             "AND (:departureDate IS NULL OR t.departureDate = :departureDate)")
     List<Tour> searchTours(

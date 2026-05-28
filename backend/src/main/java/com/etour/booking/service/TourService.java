@@ -50,7 +50,8 @@ public class TourService {
                 dto.getDepartureDate(),
                 dto.getItinerary(),
                 dto.getAvailableSlots(),
-                dto.getImage()
+                dto.getImage(),
+                dto.getDiscountPercent()
         );
         Tour savedTour = tourRepository.save(tour);
         return mapToDTO(savedTour);
@@ -72,6 +73,7 @@ public class TourService {
         tour.setItinerary(dto.getItinerary());
         tour.setAvailableSlots(dto.getAvailableSlots());
         tour.setImage(dto.getImage());
+        tour.setDiscountPercent(dto.getDiscountPercent());
 
         Tour updatedTour = tourRepository.save(tour);
         return mapToDTO(updatedTour);
@@ -95,7 +97,8 @@ public class TourService {
                 tour.getDepartureDate(),
                 tour.getItinerary(),
                 tour.getAvailableSlots(),
-                tour.getImage()
+                tour.getImage(),
+                tour.getDiscountPercent()
         );
     }
 }

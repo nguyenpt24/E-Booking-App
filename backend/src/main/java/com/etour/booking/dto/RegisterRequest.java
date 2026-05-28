@@ -20,6 +20,18 @@ public class RegisterRequest {
 
     private String role; // defaults to ROLE_CUSTOMER if null
 
+    @NotBlank(message = "Họ tên không được để trống")
+    private String fullName;
+
+    @NotBlank(message = "Số điện thoại không được để trống")
+    private String phoneNumber;
+
+    @NotBlank(message = "Giới tính không được để trống")
+    private String gender;
+
+    @jakarta.validation.constraints.NotNull(message = "Ngày sinh không được để trống")
+    private java.time.LocalDate birthDate;
+
     public RegisterRequest() {
     }
 
@@ -30,6 +42,18 @@ public class RegisterRequest {
         this.role = role;
     }
 
+    public RegisterRequest(String username, String password, String email, String role, String fullName, String phoneNumber, String gender, java.time.LocalDate birthDate) {
+        this.username = username;
+        this.password = password;
+        this.email = email;
+        this.role = role;
+        this.fullName = fullName;
+        this.phoneNumber = phoneNumber;
+        this.gender = gender;
+        this.birthDate = birthDate;
+    }
+
+    // Getters and Setters
     public String getUsername() {
         return username;
     }
@@ -60,5 +84,37 @@ public class RegisterRequest {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public String getFullName() {
+        return fullName;
+    }
+
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
+
+    public String getPhoneNumber() {
+        return phoneNumber;
+    }
+
+    public void setPhoneNumber(String phoneNumber) {
+        this.phoneNumber = phoneNumber;
+    }
+
+    public String getGender() {
+        return gender;
+    }
+
+    public void setGender(String gender) {
+        this.gender = gender;
+    }
+
+    public java.time.LocalDate getBirthDate() {
+        return birthDate;
+    }
+
+    public void setBirthDate(java.time.LocalDate birthDate) {
+        this.birthDate = birthDate;
     }
 }

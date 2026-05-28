@@ -36,6 +36,9 @@ public class Tour {
     @Column(nullable = false)
     private Boolean deleted = false; // Soft delete flag
 
+    @Column(name = "discount_percent")
+    private Integer discountPercent = 0;
+
     public Tour() {
     }
 
@@ -48,6 +51,19 @@ public class Tour {
         this.availableSlots = availableSlots;
         this.image = image;
         this.deleted = false;
+        this.discountPercent = 0;
+    }
+
+    public Tour(String title, String destination, BigDecimal price, LocalDate departureDate, String itinerary, Integer availableSlots, String image, Integer discountPercent) {
+        this.title = title;
+        this.destination = destination;
+        this.price = price;
+        this.departureDate = departureDate;
+        this.itinerary = itinerary;
+        this.availableSlots = availableSlots;
+        this.image = image;
+        this.deleted = false;
+        this.discountPercent = discountPercent != null ? discountPercent : 0;
     }
 
     // Getters and Setters
@@ -121,5 +137,13 @@ public class Tour {
 
     public void setDeleted(Boolean deleted) {
         this.deleted = deleted;
+    }
+
+    public Integer getDiscountPercent() {
+        return discountPercent != null ? discountPercent : 0;
+    }
+
+    public void setDiscountPercent(Integer discountPercent) {
+        this.discountPercent = discountPercent != null ? discountPercent : 0;
     }
 }

@@ -40,6 +40,13 @@ public class Booking {
     @JoinColumn(name = "tour_id", nullable = false)
     private Tour tour;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "user_id")
+    private User user;
+
+    @Column(name = "discount_amount")
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+
     public Booking() {
     }
 
@@ -53,6 +60,7 @@ public class Booking {
         this.tour = tour;
         this.status = "PENDING";
         this.createdAt = LocalDateTime.now();
+        this.discountAmount = BigDecimal.ZERO;
     }
 
     // Getters and Setters
@@ -134,5 +142,21 @@ public class Booking {
 
     public void setTour(Tour tour) {
         this.tour = tour;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
+    }
+
+    public BigDecimal getDiscountAmount() {
+        return discountAmount != null ? discountAmount : BigDecimal.ZERO;
+    }
+
+    public void setDiscountAmount(BigDecimal discountAmount) {
+        this.discountAmount = discountAmount != null ? discountAmount : BigDecimal.ZERO;
     }
 }

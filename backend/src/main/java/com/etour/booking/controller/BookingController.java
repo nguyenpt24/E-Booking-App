@@ -23,8 +23,11 @@ public class BookingController {
 
     // Public / Customer: Create a booking reservation
     @PostMapping
-    public ResponseEntity<BookingResponseDTO> createBooking(@Valid @RequestBody BookingRequestDTO request) {
-        BookingResponseDTO response = bookingService.createBooking(request);
+    public ResponseEntity<BookingResponseDTO> createBooking(
+            @Valid @RequestBody BookingRequestDTO request,
+            java.security.Principal principal) {
+        String username = principal != null ? principal.getName() : null;
+        BookingResponseDTO response = bookingService.createBooking(request, username);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
