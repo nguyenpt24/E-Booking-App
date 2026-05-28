@@ -13,10 +13,16 @@ import java.security.Principal;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.etour.booking.entity.SystemConfig;
+import com.etour.booking.repository.SystemConfigRepository;
+
 @RestController
 @RequestMapping("/api/users")
 @CrossOrigin
 public class UserController {
+
+    @Autowired
+    private SystemConfigRepository systemConfigRepository;
 
     @Autowired
     private UserRepository userRepository;
@@ -57,11 +63,12 @@ public class UserController {
         profile.put("totalPointsAccumulated", user.getTotalPointsAccumulated());
         profile.put("currentPoints", user.getCurrentPoints());
 
+        SystemConfig config = systemConfigRepository.findById(1L).orElseGet(SystemConfig::new);
         int pointsNeededToNextLevel = 0;
         if ("BRONZE".equalsIgnoreCase(user.getMembershipType())) {
-            pointsNeededToNextLevel = Math.max(0, 1000 - user.getCurrentPoints());
+            pointsNeededToNextLevel = Math.max(0, config.getSilverThreshold() - user.getCurrentPoints());
         } else if ("SILVER".equalsIgnoreCase(user.getMembershipType())) {
-            pointsNeededToNextLevel = Math.max(0, 5000 - user.getCurrentPoints());
+            pointsNeededToNextLevel = Math.max(0, config.getGoldThreshold() - user.getCurrentPoints());
         }
         profile.put("pointsNeededToNextLevel", pointsNeededToNextLevel);
 

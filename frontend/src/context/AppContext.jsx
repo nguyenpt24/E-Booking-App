@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import * as tourService from '../services/tourService';
 import * as userService from '../services/userService';
+import * as adminService from '../services/adminService';
 
 const AppContext = createContext();
 
@@ -37,6 +38,15 @@ export const AppProvider = ({ children }) => {
   const [searchDate, setSearchDate] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
 
+  // Dynamic system configs (loyalty, VIP upgrades)
+  const [systemConfig, setSystemConfig] = useState({
+    pointRatio: 100000,
+    silverThreshold: 1000,
+    silverDiscount: 3.0,
+    goldThreshold: 5000,
+    goldDiscount: 5.0
+  });
+
   // Auto-dismiss Alerts Utility
   const triggerNotification = (message, type = 'success') => {
     setNotification({ message, type });
@@ -67,11 +77,11 @@ export const AppProvider = ({ children }) => {
 
   const getBookingFinalPrice = (tour, count) => {
     let base = getBookingPromoPrice(tour) * count;
-    if (userProfile && tour.discountPercent > 0) {
+    if (userProfile && tour.discountPercent > 0 && systemConfig) {
       if (userProfile.membershipType === 'SILVER') {
-        base = base * 0.97;
+        base = base * (1 - systemConfig.silverDiscount / 100);
       } else if (userProfile.membershipType === 'GOLD') {
-        base = base * 0.95;
+        base = base * (1 - systemConfig.goldDiscount / 100);
       }
     }
     return Math.round(base);
@@ -81,6 +91,16 @@ export const AppProvider = ({ children }) => {
     setCurrency(newCurr);
     localStorage.setItem('currency', newCurr);
     triggerNotification(`Đã chuyển đổi tiền tệ sang ${newCurr}`);
+  };
+
+  // Fetch System Configuration
+  const fetchConfig = async () => {
+    try {
+      const data = await adminService.getSystemConfig();
+      setSystemConfig(data);
+    } catch (err) {
+      console.error('Không thể tải cấu hình hệ thống:', err);
+    }
   };
 
   // Fetch Public/Filtered Tours
@@ -224,6 +244,7 @@ export const AppProvider = ({ children }) => {
   // Initialize
   useEffect(() => {
     fetchTours();
+    fetchConfig();
     const storedCart = localStorage.getItem('tourCart');
     if (storedCart) {
       try {
@@ -292,7 +313,10 @@ export const AppProvider = ({ children }) => {
         clearCart,
         getCartTotal,
         handleLogout,
-        handleViewAllTours
+        handleViewAllTours,
+        systemConfig,
+        setSystemConfig,
+        fetchConfig
       }}
     >
       {children}

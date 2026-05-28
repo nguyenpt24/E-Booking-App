@@ -11,6 +11,8 @@ import com.etour.booking.repository.BookingRepository;
 import com.etour.booking.repository.TourRepository;
 import com.etour.booking.repository.UserRepository;
 import com.etour.booking.repository.PointHistoryRepository;
+import com.etour.booking.entity.SystemConfig;
+import com.etour.booking.repository.SystemConfigRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +24,13 @@ import java.util.stream.Collectors;
 
 @Service
 public class BookingService {
+
+    @Autowired
+    private SystemConfigRepository systemConfigRepository;
+
+    private SystemConfig getSystemConfig() {
+        return systemConfigRepository.findById(1L).orElseGet(SystemConfig::new);
+    }
 
     @Autowired
     private BookingRepository bookingRepository;
@@ -79,12 +88,13 @@ public class BookingService {
 
         // If user is logged in, apply their membership discount if the tour has a promotion (tour.discountPercent > 0)
         if (user != null && tour.getDiscountPercent() > 0) {
+            SystemConfig config = getSystemConfig();
             if ("SILVER".equalsIgnoreCase(user.getMembershipType())) {
-                BigDecimal discount = originalPriceSum.multiply(BigDecimal.valueOf(3)).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
+                BigDecimal discount = originalPriceSum.multiply(BigDecimal.valueOf(config.getSilverDiscount())).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
                 discountAmount = discount;
                 finalPrice = originalPriceSum.subtract(discount);
             } else if ("GOLD".equalsIgnoreCase(user.getMembershipType())) {
-                BigDecimal discount = originalPriceSum.multiply(BigDecimal.valueOf(5)).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
+                BigDecimal discount = originalPriceSum.multiply(BigDecimal.valueOf(config.getGoldDiscount())).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
                 discountAmount = discount;
                 finalPrice = originalPriceSum.subtract(discount);
             }
@@ -136,10 +146,10 @@ public class BookingService {
         booking.setStatus("PAID");
         Booking updatedBooking = bookingRepository.save(booking);
 
-        // Dispatch points if booking has user associated
         User user = booking.getUser();
         if (user != null) {
-            int pointsEarned = booking.getTotalPrice().divide(BigDecimal.valueOf(100000), 0, RoundingMode.DOWN).intValue();
+            SystemConfig config = getSystemConfig();
+            int pointsEarned = booking.getTotalPrice().divide(BigDecimal.valueOf(config.getPointRatio()), 0, RoundingMode.DOWN).intValue();
             if (pointsEarned > 0) {
                 user.setCurrentPoints(user.getCurrentPoints() + pointsEarned);
                 user.setTotalPointsAccumulated(user.getTotalPointsAccumulated() + pointsEarned);
@@ -181,10 +191,10 @@ public class BookingService {
         booking.setStatus("CANCELLED");
         Booking updatedBooking = bookingRepository.save(booking);
 
-        // Deduct points if paid and has user
         User user = booking.getUser();
         if (user != null && wasPaid) {
-            int pointsDeducted = booking.getTotalPrice().divide(BigDecimal.valueOf(100000), 0, RoundingMode.DOWN).intValue();
+            SystemConfig config = getSystemConfig();
+            int pointsDeducted = booking.getTotalPrice().divide(BigDecimal.valueOf(config.getPointRatio()), 0, RoundingMode.DOWN).intValue();
             user.setTotalToursParticipated(Math.max(0, user.getTotalToursParticipated() - 1));
             if (pointsDeducted > 0) {
                 user.setCurrentPoints(Math.max(0, user.getCurrentPoints() - pointsDeducted));
@@ -202,10 +212,11 @@ public class BookingService {
     }
 
     private void updateUserMembershipTier(User user) {
+        SystemConfig config = getSystemConfig();
         int pts = user.getCurrentPoints();
-        if (pts >= 5000) {
+        if (pts >= config.getGoldThreshold()) {
             user.setMembershipType("GOLD");
-        } else if (pts >= 1000) {
+        } else if (pts >= config.getSilverThreshold()) {
             user.setMembershipType("SILVER");
         } else {
             user.setMembershipType("BRONZE");

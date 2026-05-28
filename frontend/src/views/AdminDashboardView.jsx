@@ -10,13 +10,80 @@ export default function AdminDashboardView({
   onAdjustPoints,
   onViewHistory
 }) {
-  const { role, triggerNotification, formatPrice, fetchTours, tours } = useApp();
+  const {
+    role,
+    triggerNotification,
+    formatPrice,
+    fetchTours,
+    tours,
+    systemConfig,
+    fetchConfig
+  } = useApp();
 
   const [adminBookings, setAdminBookings] = useState([]);
   const [adminRevenueReports, setAdminRevenueReports] = useState([]);
   const [adminMembers, setAdminMembers] = useState([]);
   const [loadingAdminData, setLoadingAdminData] = useState(false);
-  const [adminTab, setAdminTab] = useState('bookings'); // 'bookings' | 'members'
+  const [adminTab, setAdminTab] = useState('bookings'); // 'bookings' | 'members' | 'config'
+
+  // Config Form States
+  const [pointRatio, setPointRatio] = useState(100000);
+  const [silverThreshold, setSilverThreshold] = useState(1000);
+  const [silverDiscount, setSilverDiscount] = useState(3.0);
+  const [goldThreshold, setGoldThreshold] = useState(5000);
+  const [goldDiscount, setGoldDiscount] = useState(5.0);
+  const [savingConfig, setSavingConfig] = useState(false);
+
+  useEffect(() => {
+    if (systemConfig) {
+      setPointRatio(systemConfig.pointRatio || 100000);
+      setSilverThreshold(systemConfig.silverThreshold || 1000);
+      setSilverDiscount(systemConfig.silverDiscount || 3.0);
+      setGoldThreshold(systemConfig.goldThreshold || 5000);
+      setGoldDiscount(systemConfig.goldDiscount || 5.0);
+    }
+  }, [systemConfig, adminTab]);
+
+  const handleSaveConfig = async (e) => {
+    e.preventDefault();
+    if (pointRatio <= 0 || silverThreshold <= 0 || goldThreshold <= 0) {
+      triggerNotification('Tất cả ngưỡng điểm và tỷ lệ quy đổi phải lớn hơn 0!', 'error');
+      return;
+    }
+    if (silverThreshold >= goldThreshold) {
+      triggerNotification('Ngưỡng điểm thăng hạng SILVER phải nhỏ hơn hạng GOLD!', 'error');
+      return;
+    }
+    if (silverDiscount < 0 || silverDiscount > 100 || goldDiscount < 0 || goldDiscount > 100) {
+      triggerNotification('Tỷ lệ giảm giá phải nằm trong khoảng từ 0% đến 100%!', 'error');
+      return;
+    }
+    if (silverDiscount >= goldDiscount) {
+      triggerNotification('Tỷ lệ giảm giá hạng SILVER phải nhỏ hơn hạng GOLD!', 'error');
+      return;
+    }
+
+    setSavingConfig(true);
+    try {
+      await adminService.updateSystemConfig({
+        pointRatio,
+        silverThreshold,
+        silverDiscount,
+        goldThreshold,
+        goldDiscount
+      });
+      triggerNotification('Cập nhật cấu hình hệ thống thành công!');
+      await fetchConfig();
+    } catch (err) {
+      console.error(err);
+      triggerNotification(
+        err.response?.data?.message || 'Không thể cập nhật cấu hình hệ thống!',
+        'error'
+      );
+    } finally {
+      setSavingConfig(false);
+    }
+  };
 
   const fetchAdminData = async () => {
     if (role !== 'ROLE_ADMIN') return;
@@ -118,7 +185,7 @@ export default function AdminDashboardView({
           className={`text-xs font-bold px-4 py-2.5 rounded-xl transition-all ${
             adminTab === 'bookings'
               ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/10'
-              : 'bg-slate-100 text-slate-550 text-slate-500 hover:text-slate-800'
+              : 'bg-slate-100 text-[#555a58] text-slate-500 hover:text-slate-800'
           }`}
         >
           📊 Đơn hàng & Thống kê
@@ -128,10 +195,20 @@ export default function AdminDashboardView({
           className={`text-xs font-bold px-4 py-2.5 rounded-xl transition-all ${
             adminTab === 'members'
               ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/10'
-              : 'bg-slate-100 text-slate-550 text-slate-500 hover:text-slate-800'
+              : 'bg-slate-100 text-[#555a58] text-slate-500 hover:text-slate-800'
           }`}
         >
           👥 Quản lý Thành viên (VIP)
+        </button>
+        <button
+          onClick={() => setAdminTab('config')}
+          className={`text-xs font-bold px-4 py-2.5 rounded-xl transition-all ${
+            adminTab === 'config'
+              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/10'
+              : 'bg-slate-100 text-[#555a58] text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          ⚙️ Cấu hình hệ thống
         </button>
       </div>
 
@@ -384,7 +461,7 @@ export default function AdminDashboardView({
             </div>
           </div>
         </>
-      ) : (
+      ) : adminTab === 'members' ? (
         <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm overflow-hidden animate-scaleIn">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 mb-4 border-b border-[#f0f6f3]">
             <div>
@@ -469,6 +546,153 @@ export default function AdminDashboardView({
               </table>
             </div>
           )}
+        </div>
+      ) : (
+        <div className="bg-white border border-[#e6eef0] p-8 rounded-3xl shadow-sm max-w-2xl mx-auto animate-scaleIn relative overflow-hidden">
+          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-600 to-teal-500" />
+          
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 mb-6 border-b border-[#f0f6f3]">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+                ⚙️ Cấu Hình Điểm & Thăng Hạng VIP
+              </h2>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Điều chỉnh tỷ lệ đổi điểm thưởng và điều kiện ưu đãi thăng hạng thành viên.
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSaveConfig} className="space-y-6">
+            {/* Section 1: Tỷ lệ đổi điểm */}
+            <div className="bg-[#f8faf9] border border-[#e2ece7] p-5 rounded-2xl space-y-4">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                💰 1. Cơ chế tích lũy điểm
+              </h3>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                  Tỷ lệ quy đổi điểm (VND chi tiêu cho 1 điểm)
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={pointRatio}
+                    onChange={(e) => setPointRatio(parseInt(e.target.value) || 0)}
+                    className="w-full bg-white border border-[#e2ece7] focus:border-emerald-500 rounded-xl pl-4 pr-16 py-2.5 text-xs outline-none transition-colors font-bold text-slate-800"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 font-mono">
+                    VND / pt
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-400 mt-1.5 block">
+                  Ví dụ: <strong>{new Intl.NumberFormat('vi-VN').format(pointRatio)} đ</strong> chi tiêu = tích lũy <strong>1 điểm (pt)</strong>.
+                </span>
+              </div>
+            </div>
+
+            {/* Section 2: Hạng Bạc (SILVER) */}
+            <div className="bg-[#f8faf9] border border-[#e2ece7] p-5 rounded-2xl space-y-4">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                🥈 2. Hạng Bạc (SILVER)
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Ngưỡng điểm thăng hạng (pts)
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={silverThreshold}
+                    onChange={(e) => setSilverThreshold(parseInt(e.target.value) || 0)}
+                    className="w-full bg-white border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors font-bold text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Tỷ lệ giảm giá trực tiếp (%)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={silverDiscount}
+                      onChange={(e) => setSilverDiscount(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-white border border-[#e2ece7] focus:border-emerald-500 rounded-xl pl-4 pr-10 py-2.5 text-xs outline-none transition-colors font-bold text-slate-800"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 font-mono">
+                      %
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 3: Hạng Vàng (GOLD) */}
+            <div className="bg-[#f8faf9] border border-[#e2ece7] p-5 rounded-2xl space-y-4">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                🥇 3. Hạng Vàng (GOLD)
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Ngưỡng điểm thăng hạng (pts)
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={goldThreshold}
+                    onChange={(e) => setGoldThreshold(parseInt(e.target.value) || 0)}
+                    className="w-full bg-white border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors font-bold text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Tỷ lệ giảm giá trực tiếp (%)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={goldDiscount}
+                      onChange={(e) => setGoldDiscount(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-white border border-[#e2ece7] focus:border-emerald-500 rounded-xl pl-4 pr-10 py-2.5 text-xs outline-none transition-colors font-bold text-slate-800"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 font-mono">
+                      %
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Submit Actions */}
+            <div className="flex space-x-3 pt-4 border-t border-[#f0f6f3]">
+              <button
+                type="button"
+                onClick={() => setAdminTab('bookings')}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 py-3.5 rounded-xl transition-all"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="submit"
+                disabled={savingConfig}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-[#a7d3c0] text-xs font-bold text-white py-3.5 rounded-xl shadow-md shadow-emerald-600/10 hover:shadow-lg transition-all"
+              >
+                {savingConfig ? 'Đang cập nhật...' : '💾 Lưu cấu hình hệ thống'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

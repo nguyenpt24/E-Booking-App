@@ -1,22 +1,40 @@
 package com.etour.booking.controller;
 
+import com.etour.booking.entity.SystemConfig;
+import com.etour.booking.repository.SystemConfigRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
-import java.util.Map;
-
 @RestController
-@RequestMapping("/api/config")
-@CrossOrigin
+@RequestMapping("/api")
 public class ConfigController {
 
-    // Automatically convert based on configured system exchange rate
-    @GetMapping("/currency")
-    public ResponseEntity<Map<String, Object>> getCurrencyConfig() {
-        Map<String, Object> config = new HashMap<>();
-        config.put("exchangeRate", 25000); // 1 USD = 25,000 VND
-        config.put("supportedCurrencies", new String[]{"VND", "USD"});
+    @Autowired
+    private SystemConfigRepository systemConfigRepository;
+
+    @GetMapping("/config")
+    public ResponseEntity<SystemConfig> getConfig() {
+        SystemConfig config = systemConfigRepository.findById(1L)
+                .orElseGet(() -> {
+                    SystemConfig defaultCtx = new SystemConfig();
+                    return systemConfigRepository.save(defaultCtx);
+                });
         return ResponseEntity.ok(config);
+    }
+
+    @PutMapping("/admin/config")
+    public ResponseEntity<?> updateConfig(@RequestBody SystemConfig newConfig) {
+        SystemConfig config = systemConfigRepository.findById(1L)
+                .orElseGet(SystemConfig::new);
+
+        config.setPointRatio(newConfig.getPointRatio());
+        config.setSilverThreshold(newConfig.getSilverThreshold());
+        config.setSilverDiscount(newConfig.getSilverDiscount());
+        config.setGoldThreshold(newConfig.getGoldThreshold());
+        config.setGoldDiscount(newConfig.getGoldDiscount());
+
+        SystemConfig saved = systemConfigRepository.save(config);
+        return ResponseEntity.ok(saved);
     }
 }

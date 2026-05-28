@@ -37,6 +37,9 @@ public class SecurityConfig {
                 // Authentication API
                 .requestMatchers("/api/auth/**").permitAll()
                 
+                // Public Config (System rules)
+                .requestMatchers(HttpMethod.GET, "/api/config").permitAll()
+                
                 // Public Tour Catalogs (Search/Details)
                 .requestMatchers(HttpMethod.GET, "/api/tours/**").permitAll()
                 

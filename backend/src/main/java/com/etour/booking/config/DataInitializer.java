@@ -1,7 +1,9 @@
 package com.etour.booking.config;
 
+import com.etour.booking.entity.SystemConfig;
 import com.etour.booking.entity.Tour;
 import com.etour.booking.entity.User;
+import com.etour.booking.repository.SystemConfigRepository;
 import com.etour.booking.repository.TourRepository;
 import com.etour.booking.repository.UserRepository;
 import org.slf4j.Logger;
@@ -27,6 +29,9 @@ public class DataInitializer implements CommandLineRunner {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private SystemConfigRepository systemConfigRepository;
 
     @Override
     public void run(String... args) throws Exception {
@@ -59,6 +64,14 @@ public class DataInitializer implements CommandLineRunner {
             customer.setPhoneNumber("0987654321");
             userRepository.save(customer);
             log.info("👤 Đã tạo tài khoản KHÁCH HÀNG mặc định: [customer / customerpassword]");
+        }
+
+        // 1.5 Seed SystemConfig if empty
+        if (systemConfigRepository.count() == 0) {
+            log.info("⚙️ Cơ sở dữ liệu cấu hình hệ thống trống. Tiến hành nạp cấu hình mặc định...");
+            SystemConfig config = new SystemConfig();
+            systemConfigRepository.save(config);
+            log.info("⚙️ Đã lưu cấu hình mặc định: [PointRatio=100k, SilverThreshold=1000, SilverDiscount=3%, GoldThreshold=5000, GoldDiscount=5%]");
         }
 
         // 2. Seed Tours if empty

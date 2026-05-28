@@ -9,7 +9,8 @@ export default function UserProfileView() {
     profileLoading,
     fetchUserProfile,
     triggerNotification,
-    setActiveTab
+    setActiveTab,
+    systemConfig
   } = useApp();
 
   const [profileEmail, setProfileEmail] = useState('');
@@ -143,8 +144,8 @@ export default function UserProfileView() {
                 {userProfile.membershipType === 'GOLD'
                   ? 'CẤP ĐỘ CAO NHẤT'
                   : userProfile.membershipType === 'SILVER'
-                  ? 'GOLD (5,000 pts)'
-                  : 'SILVER (1,000 pts)'}
+                  ? `GOLD (${systemConfig?.goldThreshold ? new Intl.NumberFormat('vi-VN').format(systemConfig.goldThreshold) : '5,000'} pts)`
+                  : `SILVER (${systemConfig?.silverThreshold ? new Intl.NumberFormat('vi-VN').format(systemConfig.silverThreshold) : '1,000'} pts)`}
               </span>
               <span>
                 {userProfile.membershipType === 'GOLD'
@@ -160,18 +161,18 @@ export default function UserProfileView() {
                     userProfile.membershipType === 'GOLD'
                       ? '100%'
                       : userProfile.membershipType === 'SILVER'
-                      ? `${Math.min(100, (userProfile.currentPoints / 5000) * 100)}%`
-                      : `${Math.min(100, (userProfile.currentPoints / 1000) * 100)}%`
+                      ? `${Math.min(100, (userProfile.currentPoints / (systemConfig?.goldThreshold || 5000)) * 100)}%`
+                      : `${Math.min(100, (userProfile.currentPoints / (systemConfig?.silverThreshold || 1000)) * 100)}%`
                 }}
               />
             </div>
             <p className="text-[9px] opacity-85 leading-normal mt-2">
               🌟 Quyền lợi:{' '}
               {userProfile.membershipType === 'GOLD'
-                ? 'Giảm trực tiếp 5% cho tất cả các tour đang ưu đãi kịch sàn + Ưu tiên hỗ trợ VIP.'
+                ? `Giảm trực tiếp ${systemConfig?.goldDiscount || 5}% cho tất cả các tour đang ưu đãi kịch sàn + Ưu tiên hỗ trợ VIP.`
                 : userProfile.membershipType === 'SILVER'
-                ? 'Giảm trực tiếp 3% cho tất cả các tour đang ưu đãi kịch sàn.'
-                : 'Quyền lợi cơ bản, tích lũy 1 điểm cho mỗi 100.000 đ chi tiêu thực nhận.'}
+                ? `Giảm trực tiếp ${systemConfig?.silverDiscount || 3}% cho tất cả các tour đang ưu đãi kịch sàn.`
+                : `Quyền lợi cơ bản, tích lũy 1 điểm cho mỗi ${systemConfig?.pointRatio ? new Intl.NumberFormat('vi-VN').format(systemConfig.pointRatio) : '100.000'} đ chi tiêu thực nhận.`}
             </p>
           </div>
         </div>
