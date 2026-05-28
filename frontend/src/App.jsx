@@ -1,449 +1,80 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState } from 'react';
+import { AppProvider, useApp } from './context/AppContext';
+import axios from './api/client';
+import * as adminService from './services/adminService';
 
-// Configure Axios Defaults to point to the Backend Port
-const API_BASE = 'http://localhost:8081/api';
-axios.defaults.baseURL = API_BASE;
+// Import Common Components
+import Header from './components/Header';
+import Footer from './components/Footer';
+import Toast from './components/Toast';
+import CartDrawer from './components/CartDrawer';
+import FloatingContact from './components/FloatingContact';
+import BackToTop from './components/BackToTop';
 
-// Inject JWT Token from LocalStorage if it exists
-axios.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('jwtToken');
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+// Import Views
+import HomeView from './views/HomeView';
+import ToursCatalogView from './views/ToursCatalogView';
+import LoginView from './views/LoginView';
+import RegisterView from './views/RegisterView';
+import UserProfileView from './views/UserProfileView';
+import AdminDashboardView from './views/AdminDashboardView';
 
-export default function App() {
-  // Authentication & Session States
-  const [token, setToken] = useState(localStorage.getItem('jwtToken') || '');
-  const [username, setUsername] = useState(localStorage.getItem('username') || '');
-  const [role, setRole] = useState(localStorage.getItem('role') || '');
-  
-  // Navigation State: 'home' | 'tours-catalog' | 'login' | 'register' | 'admin-dashboard'
-  const [activeTab, setActiveTab] = useState('home');
+// Import Modals
+import TourDetailModal from './modals/TourDetailModal';
+import CheckoutModal from './modals/CheckoutModal';
+import PaymentSimulatorModal from './modals/PaymentSimulatorModal';
+import TourCrudModal from './modals/TourCrudModal';
+import PointsAdjustModal from './modals/PointsAdjustModal';
+import HistoryModal from './modals/HistoryModal';
 
-  // Currency Converter State
-  const [currency, setCurrency] = useState(localStorage.getItem('currency') || 'VND');
-  const exchangeRate = 25000;
+function AppContent() {
+  const {
+    activeTab,
+    cart,
+    setCart,
+    fetchTours,
+    triggerNotification
+  } = useApp();
 
-  const formatPrice = (priceVND) => {
-    if (currency === 'USD') {
-      const converted = priceVND / exchangeRate;
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(converted);
-    }
-    return new Intl.NumberFormat('vi-VN').format(priceVND) + ' đ';
-  };
-
-  const getBookingPromoPrice = (tour) => {
-    let price = tour.price;
-    if (tour.discountPercent > 0) {
-      price = price * (100 - tour.discountPercent) / 100;
-    }
-    return price;
-  };
-
-  const getBookingFinalPrice = (tour, count) => {
-    let base = getBookingPromoPrice(tour) * count;
-    if (userProfile && tour.discountPercent > 0) {
-      if (userProfile.membershipType === 'SILVER') {
-        base = base * 0.97;
-      } else if (userProfile.membershipType === 'GOLD') {
-        base = base * 0.95;
-      }
-    }
-    return Math.round(base);
-  };
-
-  const handleCurrencyChange = (newCurr) => {
-    setCurrency(newCurr);
-    localStorage.setItem('currency', newCurr);
-    triggerNotification(`Đã chuyển đổi tiền tệ sang ${newCurr}`);
-  };
-
-  // Profile Update States
-  const [userProfile, setUserProfile] = useState(null);
-  const [profileEmail, setProfileEmail] = useState('');
-  const [profileFullName, setProfileFullName] = useState('');
-  const [profilePhoneNumber, setProfilePhoneNumber] = useState('');
-  const [profileGender, setProfileGender] = useState('Nam');
-  const [profileBirthDate, setProfileBirthDate] = useState('');
-  const [profileCccd, setProfileCccd] = useState('');
-  const [profileCccdIssueDate, setProfileCccdIssueDate] = useState('');
-  const [profileCccdIssuePlace, setProfileCccdIssuePlace] = useState('');
-  const [profilePassport, setProfilePassport] = useState('');
-  const [profilePassportIssueDate, setProfilePassportIssueDate] = useState('');
-  const [profilePassportExpiryDate, setProfilePassportExpiryDate] = useState('');
-  const [profileAddress, setProfileAddress] = useState('');
-  const [profileNationality, setProfileNationality] = useState('Việt Nam');
-
-  const [profileOldPassword, setProfileOldPassword] = useState('');
-  const [profileNewPassword, setProfileNewPassword] = useState('');
-  const [profileLoading, setProfileLoading] = useState(false);
-
-  // Customer Catalog States
-  const [tours, setTours] = useState([]);
-  const [loadingTours, setLoadingTours] = useState(false);
-  const [searchDest, setSearchDest] = useState('');
-  const [searchMaxPrice, setSearchMaxPrice] = useState('');
-  const [searchDate, setSearchDate] = useState('');
-  const [activeCategory, setActiveCategory] = useState('all');
-
-  // Shopping Cart States
-  const [cart, setCart] = useState([]);
-  const [showCartDrawer, setShowCartDrawer] = useState(false);
-
-  // Tour Detail States
+  // Detail Modal State
   const [selectedTourDetail, setSelectedTourDetail] = useState(null);
-  
-  // Checkout Process States
+
+  // Checkout Modal State
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
-  const [checkoutName, setCheckoutName] = useState('');
-  const [checkoutEmail, setCheckoutEmail] = useState('');
-  const [checkoutPhone, setCheckoutPhone] = useState('');
-  const [checkoutPaymentMethod, setCheckoutPaymentMethod] = useState('VNPAY');
+
+  // Payment Simulator State
+  const [showPaymentSimulator, setShowPaymentSimulator] = useState(false);
   const [activeInvoice, setActiveInvoice] = useState(null);
   const [mockPaymentUrl, setMockPaymentUrl] = useState('');
-  const [showPaymentSimulator, setShowPaymentSimulator] = useState(false);
 
-  // Admin Dashboard States
-  const [adminBookings, setAdminBookings] = useState([]);
-  const [adminRevenueReports, setAdminRevenueReports] = useState([]);
-  const [adminMembers, setAdminMembers] = useState([]);
-  const [loadingAdminData, setLoadingAdminData] = useState(false);
-  const [selectedMemberHistory, setSelectedMemberHistory] = useState([]);
-  const [showPointsAdjustModal, setShowPointsAdjustModal] = useState(false);
-  const [adjustingMember, setAdjustingMember] = useState(null);
-  const [adjustPointsChange, setAdjustPointsChange] = useState('');
-  const [adjustReason, setAdjustReason] = useState('');
-  const [showHistoryModal, setShowHistoryModal] = useState(false);
-  const [adminTab, setAdminTab] = useState('bookings'); // 'bookings' | 'tours' | 'members'
-
-  // Tour CRUD Modal States
+  // Tour CRUD Modal State
   const [showTourCrudModal, setShowTourCrudModal] = useState(false);
   const [crudMode, setCrudMode] = useState('ADD'); // 'ADD' | 'EDIT'
-  const [crudTourId, setCrudTourId] = useState(null);
-  const [crudTitle, setCrudTitle] = useState('');
-  const [crudDestination, setCrudDestination] = useState('');
-  const [crudPrice, setCrudPrice] = useState('');
-  const [crudDepartureDate, setCrudDepartureDate] = useState('');
-  const [crudItinerary, setCrudItinerary] = useState('');
-  const [crudAvailableSlots, setCrudAvailableSlots] = useState(10);
-  const [crudImage, setCrudImage] = useState('');
-  const [crudDiscountPercent, setCrudDiscountPercent] = useState(0);
+  const [crudTour, setCrudTour] = useState(null);
 
-  // Notification Toast State
-  const [notification, setNotification] = useState(null);
-  const [toastKey, setToastKey] = useState(0);
+  // Points Adjustment Modal State
+  const [showPointsAdjustModal, setShowPointsAdjustModal] = useState(false);
+  const [adjustingMember, setAdjustingMember] = useState(null);
 
-  // Auto-dismiss Alerts Utility
-  const triggerNotification = (message, type = 'success') => {
-    setNotification({ message, type });
-    setToastKey(prev => prev + 1);
-    setTimeout(() => setNotification(null), 2500);
-  };
+  // Member History State
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [selectedMemberHistory, setSelectedMemberHistory] = useState([]);
 
-  // Fetch Public/Filtered Tours
-  const fetchTours = async (isSearch = false) => {
-    setLoadingTours(true);
-    try {
-      let url = '/tours';
-      if (isSearch) {
-        url = '/tours/search?';
-        const params = [];
-        if (searchDest) params.push(`destination=${encodeURIComponent(searchDest)}`);
-        if (searchMaxPrice) params.push(`maxPrice=${searchMaxPrice}`);
-        if (searchDate) params.push(`departureDate=${searchDate}`);
-        url += params.join('&');
-      }
-      const res = await axios.get(url);
-      setTours(res.data);
-    } catch (err) {
-      console.error(err);
-      triggerNotification(err.response?.data?.message || 'Không thể tải danh sách tour du lịch!', 'error');
-    } finally {
-      setLoadingTours(false);
-    }
-  };
+  // Dashboard Refresh Counter
+  const [adminRefreshCounter, setAdminRefreshCounter] = useState(0);
 
-  const handleViewAllTours = () => {
-    setSearchDest('');
-    setSearchMaxPrice('');
-    setSearchDate('');
-    fetchTours(false);
-    setActiveTab('tours-catalog');
-  };
-
-  // Fetch Administrative Records (For Admin Only)
-  const fetchAdminData = async () => {
-    if (role !== 'ROLE_ADMIN') return;
-    setLoadingAdminData(true);
-    try {
-      const bookingsRes = await axios.get('/bookings');
-      setAdminBookings(bookingsRes.data);
-
-      const reportRes = await axios.get('/admin/reports/revenue');
-      setAdminRevenueReports(reportRes.data);
-
-      const membersRes = await axios.get('/admin/members');
-      setAdminMembers(membersRes.data);
-    } catch (err) {
-      console.error(err);
-      triggerNotification(err.response?.data?.message || 'Không thể đồng bộ dữ liệu quản trị!', 'error');
-    } finally {
-      setLoadingAdminData(false);
-    }
-  };
-
-  const fetchMemberHistory = async (memberId) => {
-    try {
-      const res = await axios.get(`/admin/members/${memberId}/history`);
-      setSelectedMemberHistory(res.data);
-      setShowHistoryModal(true);
-    } catch (err) {
-      console.error(err);
-      triggerNotification('Không thể tải lịch sử tích điểm của thành viên!', 'error');
-    }
-  };
-
-  const handleAdjustPointsSubmit = async (e) => {
-    e.preventDefault();
-    if (!adjustingMember) return;
-    try {
-      const payload = {
-        pointsChange: parseInt(adjustPointsChange),
-        reason: adjustReason
-      };
-      await axios.put(`/admin/members/${adjustingMember.id}/points`, payload);
-      triggerNotification(`Đã điều chỉnh điểm cho thành viên ${adjustingMember.fullName}!`);
-      setShowPointsAdjustModal(false);
-      setAdjustPointsChange('');
-      setAdjustReason('');
-      setAdjustingMember(null);
-      fetchAdminData();
-    } catch (err) {
-      console.error(err);
-      triggerNotification(err.response?.data?.message || 'Không thể điều chỉnh điểm!', 'error');
-    }
-  };
-
-  useEffect(() => {
-    fetchTours();
-    // Load Cart from localStorage if exists
-    const storedCart = localStorage.getItem('tourCart');
-    if (storedCart) {
-      try {
-        setCart(JSON.parse(storedCart));
-      } catch (e) {
-        localStorage.removeItem('tourCart');
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (token) {
-      fetchUserProfile();
-    } else {
-      setUserProfile(null);
-    }
-  }, [token]);
-
-  const fetchUserProfile = async () => {
-    if (!token) return;
-    setProfileLoading(true);
-    try {
-      const res = await axios.get('/users/profile');
-      setUserProfile(res.data);
-      setProfileEmail(res.data.email || '');
-      setProfileFullName(res.data.fullName || '');
-      setProfilePhoneNumber(res.data.phoneNumber || '');
-      setProfileGender(res.data.gender || 'Nam');
-      setProfileBirthDate(res.data.birthDate || '');
-      setProfileCccd(res.data.cccd || '');
-      setProfileCccdIssueDate(res.data.cccdIssueDate || '');
-      setProfileCccdIssuePlace(res.data.cccdIssuePlace || '');
-      setProfilePassport(res.data.passport || '');
-      setProfilePassportIssueDate(res.data.passportIssueDate || '');
-      setProfilePassportExpiryDate(res.data.passportExpiryDate || '');
-      setProfileAddress(res.data.address || '');
-      setProfileNationality(res.data.nationality || 'Việt Nam');
-    } catch (err) {
-      console.error(err);
-      triggerNotification(err.response?.data?.message || 'Không thể lấy thông tin tài khoản!', 'error');
-    } finally {
-      setProfileLoading(false);
-    }
-  };
-
-  const handleUpdateProfile = async (e) => {
-    e.preventDefault();
-    if (!profileOldPassword) {
-      triggerNotification('Vui lòng nhập mật khẩu hiện tại để xác thực!', 'error');
-      return;
-    }
-    setProfileLoading(true);
-    try {
-      const payload = {
-        email: profileEmail,
-        fullName: profileFullName,
-        phoneNumber: profilePhoneNumber,
-        gender: profileGender,
-        birthDate: profileBirthDate || null,
-        cccd: profileCccd || null,
-        cccdIssueDate: profileCccdIssueDate || null,
-        cccdIssuePlace: profileCccdIssuePlace || null,
-        passport: profilePassport || null,
-        passportIssueDate: profilePassportIssueDate || null,
-        passportExpiryDate: profilePassportExpiryDate || null,
-        address: profileAddress || null,
-        nationality: profileNationality || null,
-        oldPassword: profileOldPassword,
-        newPassword: profileNewPassword
-      };
-      const res = await axios.put('/users/profile', payload);
-      triggerNotification(res.data.message || 'Cập nhật tài khoản thành công!');
-      setProfileOldPassword('');
-      setProfileNewPassword('');
-      fetchUserProfile();
-      setActiveTab('home');
-    } catch (err) {
-      console.error(err);
-      triggerNotification(err.response?.data?.message || 'Cập nhật tài khoản thất bại!', 'error');
-    } finally {
-      setProfileLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'admin-dashboard') {
-      fetchAdminData();
-    } else if (activeTab === 'user-profile') {
-      fetchUserProfile();
-    }
-  }, [activeTab]);
-
-  // Persist Cart
-  const saveCart = (newCart) => {
-    setCart(newCart);
-    localStorage.setItem('tourCart', JSON.stringify(newCart));
-  };
-
-  // Cart Operations
-  const addToCart = (tour, count = 1) => {
-    if (!token) {
-      triggerNotification('Vui lòng đăng nhập tài khoản thành viên để chọn/đặt tour!', 'error');
-      setActiveTab('login');
-      return;
-    }
-    const existingItemIdx = cart.findIndex((item) => item.tour.id === tour.id);
-    const currentCart = [...cart];
-
-    if (existingItemIdx > -1) {
-      const newCount = currentCart[existingItemIdx].ticketsCount + count;
-      if (newCount > tour.availableSlots) {
-        triggerNotification(`Rất tiếc, Tour này chỉ còn ${tour.availableSlots} chỗ trống!`, 'error');
-        return;
-      }
-      currentCart[existingItemIdx].ticketsCount = newCount;
-    } else {
-      if (count > tour.availableSlots) {
-        triggerNotification(`Rất tiếc, Tour này chỉ còn ${tour.availableSlots} chỗ trống!`, 'error');
-        return;
-      }
-      currentCart.push({ tour, ticketsCount: count });
-    }
-
-    saveCart(currentCart);
-    triggerNotification(`Đã thêm "${tour.title}" vào giỏ hàng!`);
-  };
-
-  const updateCartCount = (tourId, count) => {
-    const item = cart.find((i) => i.tour.id === tourId);
-    if (!item) return;
-
-    if (count <= 0) {
-      removeFromCart(tourId);
-      return;
-    }
-
-    if (count > item.tour.availableSlots) {
-      triggerNotification(`Rất tiếc, Tour này chỉ còn ${item.tour.availableSlots} chỗ trống!`, 'error');
-      return;
-    }
-
-    const newCart = cart.map((i) => 
-      i.tour.id === tourId ? { ...i, ticketsCount: count } : i
-    );
-    saveCart(newCart);
-  };
-
-  const removeFromCart = (tourId) => {
-    const newCart = cart.filter((i) => i.tour.id !== tourId);
-    saveCart(newCart);
-    triggerNotification('Đã xóa tour khỏi giỏ hàng.');
-  };
-
-  const clearCart = () => {
-    saveCart([]);
-  };
-
-  const getCartTotal = () => {
-    return cart.reduce((total, item) => total + getBookingFinalPrice(item.tour, item.ticketsCount), 0);
-  };
-
-  // Auth Operations
-  const handleAuth = async (mode, e, authData) => {
-    e.preventDefault();
-    try {
-      const endpoint = mode === 'login' ? '/auth/login' : '/auth/register';
-      const res = await axios.post(endpoint, authData);
-      
-      const { token, username, role } = res.data;
-      localStorage.setItem('jwtToken', token);
-      localStorage.setItem('username', username);
-      localStorage.setItem('role', role);
-
-      setToken(token);
-      setUsername(username);
-      setRole(role);
-      
-      triggerNotification(mode === 'login' ? `Chào mừng trở lại, ${username}!` : 'Đăng ký tài khoản thành công!');
-      
-      if (role === 'ROLE_ADMIN') {
-        setActiveTab('admin-dashboard');
-      } else {
-        setActiveTab('home');
-      }
-    } catch (err) {
-      console.error(err);
-      triggerNotification(err.response?.data?.message || 'Lỗi xác thực thông tin!', 'error');
-    }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('jwtToken');
-    localStorage.removeItem('username');
-    localStorage.removeItem('role');
-    setToken('');
-    setUsername('');
-    setRole('');
-    setActiveTab('home');
-    triggerNotification('Đã đăng xuất tài khoản an toàn!');
-  };
-
-  // Cart Checkout Flow
-  const handleCartCheckoutSubmit = async (e) => {
-    e.preventDefault();
+  // Checkout flows
+  const handleCartCheckoutSubmit = async ({
+    checkoutName,
+    checkoutEmail,
+    checkoutPhone,
+    checkoutPaymentMethod
+  }) => {
     if (cart.length === 0) return;
 
     try {
-      // Check out items. Since the API checks out one by one, we will process the first item in cart
-      // or check out them one by one. For standard visual flow, we take the primary item (or checkout sequentially)
-      const primaryItem = cart[0]; 
-      
+      const primaryItem = cart[0];
+
       const payload = {
         tourId: primaryItem.tour.id,
         customerName: checkoutName,
@@ -458,7 +89,7 @@ export default function App() {
 
       // Call payment gateway URL generator
       const payRes = await axios.post(`/bookings/${bookingResult.id}/pay`);
-      
+
       // Update states
       setActiveInvoice(bookingResult);
       setMockPaymentUrl(payRes.data.paymentUrl);
@@ -467,7 +98,8 @@ export default function App() {
 
       // Remove the checked out item from cart
       const remainingCart = cart.slice(1);
-      saveCart(remainingCart);
+      setCart(remainingCart);
+      localStorage.setItem('tourCart', JSON.stringify(remainingCart));
 
       fetchTours();
       triggerNotification(`Đơn đặt tour #${bookingResult.id} đã được giữ chỗ thành công!`);
@@ -484,2200 +116,186 @@ export default function App() {
       setShowPaymentSimulator(false);
       setActiveInvoice(null);
       fetchTours();
+      setAdminRefreshCounter((prev) => prev + 1);
     } catch (err) {
       console.error(err);
       triggerNotification(err.response?.data?.message || 'Xác nhận thanh toán thất bại!', 'error');
     }
   };
 
-  // Admin Actions: Tour CRUD
-  const handleCrudSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const payload = {
-        title: crudTitle,
-        destination: crudDestination,
-        price: parseFloat(crudPrice),
-        departureDate: crudDepartureDate,
-        itinerary: crudItinerary,
-        availableSlots: parseInt(crudAvailableSlots),
-        image: crudImage || 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80'
-      };
+  const handlePaymentSimulatorClose = () => {
+    setShowPaymentSimulator(false);
+    setActiveInvoice(null);
+    triggerNotification(
+      'Thanh toán hoãn. Bạn vui lòng hoàn tất trong vòng 15 phút để tránh tự động hủy.',
+      'error'
+    );
+  };
 
+  // Tour CRUD form submission callback
+  const handleCrudSubmit = async (payload) => {
+    try {
       if (crudMode === 'ADD') {
         await axios.post('/tours', payload);
         triggerNotification('Đã thêm tour mới thành công!');
       } else {
-        await axios.put(`/tours/${crudTourId}`, payload);
+        await axios.put(`/tours/${crudTour.id}`, payload);
         triggerNotification('Đã cập nhật thông tin tour thành công!');
       }
 
       setShowTourCrudModal(false);
+      setCrudTour(null);
       fetchTours();
-      fetchAdminData();
+      setAdminRefreshCounter((prev) => prev + 1);
     } catch (err) {
       console.error(err);
       triggerNotification(err.response?.data?.message || 'Không thể lưu thông tin tour!', 'error');
     }
   };
 
-  const openEditTour = (tour) => {
-    setCrudMode('EDIT');
-    setCrudTourId(tour.id);
-    setCrudTitle(tour.title);
-    setCrudDestination(tour.destination);
-    setCrudPrice(tour.price);
-    setCrudDepartureDate(tour.departureDate);
-    setCrudItinerary(tour.itinerary);
-    setCrudAvailableSlots(tour.availableSlots);
-    setCrudImage(tour.image);
-    setShowTourCrudModal(true);
-  };
-
-  const openAddTour = () => {
+  const handleAddTourClick = () => {
     setCrudMode('ADD');
-    setCrudTourId(null);
-    setCrudTitle('');
-    setCrudDestination('');
-    setCrudPrice('');
-    setCrudDepartureDate('');
-    setCrudItinerary('');
-    setCrudAvailableSlots(10);
-    setCrudImage('');
+    setCrudTour(null);
     setShowTourCrudModal(true);
   };
 
-  const softDeleteTour = async (id) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa tour du lịch này?')) return;
+  const handleEditTourClick = (tour) => {
+    setCrudMode('EDIT');
+    setCrudTour(tour);
+    setShowTourCrudModal(true);
+  };
+
+  // Loyalty points updates submission
+  const handleAdjustPointsSubmit = async (payload) => {
+    if (!adjustingMember) return;
     try {
-      await axios.delete(`/tours/${id}`);
-      triggerNotification('Đã ẩn (xóa mềm) tour du lịch thành công!');
-      fetchTours();
-      fetchAdminData();
+      await adminService.adjustMemberPoints(adjustingMember.id, payload.pointsChange, payload.reason);
+      triggerNotification(`Đã điều chỉnh điểm cho thành viên ${adjustingMember.fullName}!`);
+      setShowPointsAdjustModal(false);
+      setAdjustingMember(null);
+      setAdminRefreshCounter((prev) => prev + 1);
     } catch (err) {
       console.error(err);
-      triggerNotification(err.response?.data?.message || 'Lỗi khi xóa tour!', 'error');
+      triggerNotification(err.response?.data?.message || 'Không thể điều chỉnh điểm!', 'error');
     }
   };
 
-  // Admin Actions: Booking Board (Approve/Cancel)
-  const adminApproveBooking = async (id) => {
+  const handleAdjustPointsClick = (member) => {
+    setAdjustingMember(member);
+    setShowPointsAdjustModal(true);
+  };
+
+  // Timeline histories logs
+  const handleViewHistoryClick = async (member) => {
     try {
-      await axios.put(`/bookings/${id}/approve`);
-      triggerNotification('Duyệt đơn thanh toán thành công! Đã gửi hóa đơn qua email.');
-      fetchAdminData();
-      fetchTours();
+      const data = await adminService.getMemberHistory(member.id);
+      setSelectedMemberHistory(data);
+      setShowHistoryModal(true);
     } catch (err) {
       console.error(err);
-      triggerNotification(err.response?.data?.message || 'Không thể duyệt đơn hàng!', 'error');
+      triggerNotification('Không thể tải lịch sử tích điểm của thành viên!', 'error');
     }
   };
-
-  const adminCancelBooking = async (id) => {
-    if (!window.confirm('Bạn có chắc chắn muốn hủy đơn hàng này? Chỗ trống sẽ được hoàn trả.')) return;
-    try {
-      await axios.put(`/bookings/${id}/cancel`);
-      triggerNotification('Đã hủy đơn hàng và hoàn trả chỗ trống thành công!');
-      fetchAdminData();
-      fetchTours();
-    } catch (err) {
-      console.error(err);
-      triggerNotification(err.response?.data?.message || 'Không thể hủy đơn hàng!', 'error');
-    }
-  };
-
-  // Filtered tours by local Category tabs (optional aesthetic touch)
-  const getFilteredTours = () => {
-    if (activeCategory === 'all') return tours;
-    if (activeCategory === 'domestic') {
-      return tours.filter(t => !t.destination.toLowerCase().includes('singapore') && 
-                                !t.destination.toLowerCase().includes('thái lan') && 
-                                !t.destination.toLowerCase().includes('nhật bản') && 
-                                !t.destination.toLowerCase().includes('korea'));
-    }
-    if (activeCategory === 'international') {
-      return tours.filter(t => t.destination.toLowerCase().includes('singapore') || 
-                               t.destination.toLowerCase().includes('thái lan') || 
-                               t.destination.toLowerCase().includes('nhật bản') || 
-                               t.destination.toLowerCase().includes('korea') || 
-                               t.destination.toLowerCase().includes('quốc tế'));
-    }
-    return tours;
-  };
-
-  const filteredToursList = getFilteredTours();
 
   return (
     <div className="min-h-screen bg-[#f7faf8] text-[#1e293b] font-sans antialiased pb-20 selection:bg-emerald-500 selection:text-white">
-      
       {/* Dynamic Toast Alert Notification */}
-      {notification && (
-        <div 
-          key={toastKey}
-          className={`fixed bottom-6 right-6 z-55 z-50 flex items-center p-4 rounded-2xl shadow-2xl animate-toast border ${
-            notification.type === 'error' 
-              ? 'bg-rose-950/95 text-rose-100 border-rose-800/50 backdrop-blur-md' 
-              : 'bg-emerald-950/95 text-emerald-100 border-emerald-800/50 backdrop-blur-md'
-          }`}
-          style={{ minWidth: '300px' }}
-        >
-          <div className="text-xs font-extrabold tracking-wide flex items-center space-x-3 w-full">
-            <span className="text-base">{notification.type === 'error' ? '❌' : '✅'}</span>
-            <span className="flex-1 leading-normal">{notification.message}</span>
-          </div>
-        </div>
-      )}
+      <Toast />
 
       {/* Premium Minimalist Green-White Header Navigation */}
-      <header className="sticky top-0 z-40 backdrop-blur-md bg-white/95 border-b border-[#e6eef0] shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          {/* Logo Brand */}
-          <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActiveTab('home')}>
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center font-bold text-white text-lg shadow-md shadow-emerald-600/10">
-              🍀
-            </div>
-            <span className="font-extrabold text-xl tracking-tight text-slate-800">
-              E-Tour <span className="text-emerald-600 font-medium">Booking</span>
-            </span>
-          </div>
-
-          {/* Navigation Options */}
-          <nav className="hidden md:flex items-center space-x-8">
-            <button 
-              onClick={() => setActiveTab('home')} 
-              className={`font-semibold text-sm transition-colors ${activeTab === 'home' ? 'text-emerald-700' : 'text-slate-500 hover:text-slate-800'}`}
-            >
-              Trang chủ
-            </button>
-            <button 
-              onClick={handleViewAllTours} 
-              className={`font-semibold text-sm transition-colors ${activeTab === 'tours-catalog' ? 'text-emerald-700' : 'text-slate-500 hover:text-slate-800'}`}
-            >
-              Danh sách Tour
-            </button>
-            {token && role === 'ROLE_ADMIN' && (
-              <button 
-                onClick={() => setActiveTab('admin-dashboard')} 
-                className={`font-semibold text-sm transition-colors ${activeTab === 'admin-dashboard' ? 'text-emerald-700 animate-pulse' : 'text-slate-500 hover:text-slate-800'}`}
-              >
-                Dashboard Quản Trị
-              </button>
-            )}
-          </nav>
-
-          {/* Action Blocks (Cart & Profile Accounts) */}
-          <div className="flex items-center space-x-4">
-            {/* Currency conversion button */}
-            <div className="flex bg-[#f0f6f3] border border-[#e2ece7] p-0.5 rounded-lg shadow-xs items-center h-[34px]">
-              <button 
-                onClick={() => handleCurrencyChange('VND')}
-                className={`text-[9px] font-extrabold px-2.5 py-1.5 rounded-md transition-all ${currency === 'VND' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-              >
-                VND
-              </button>
-              <button 
-                onClick={() => handleCurrencyChange('USD')}
-                className={`text-[9px] font-extrabold px-2.5 py-1.5 rounded-md transition-all ${currency === 'USD' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-              >
-                USD
-              </button>
-            </div>
-
-            {/* Cart Trigger Button */}
-            <button 
-              onClick={() => setShowCartDrawer(true)}
-              className="relative p-2 bg-[#eff7f4] border border-[#d6eae1] rounded-xl hover:bg-[#e3f2ec] text-slate-700 hover:text-emerald-700 transition-all h-[36px] w-[36px] flex items-center justify-center"
-            >
-              <span className="text-sm">🛒</span>
-              {cart.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-emerald-600 text-white font-extrabold text-[9px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white animate-bounce">
-                  {cart.reduce((sum, item) => sum + item.ticketsCount, 0)}
-                </span>
-              )}
-            </button>
-
-            {token ? (
-              <div className="flex items-center space-x-3">
-                <div 
-                  onClick={() => setActiveTab('user-profile')}
-                  className="text-right hidden sm:block cursor-pointer group"
-                  title="Thông tin tài khoản"
-                >
-                  <span className="block text-xs font-bold text-slate-800 group-hover:text-emerald-600 transition-colors flex items-center justify-end space-x-1">
-                    <span>{username}</span>
-                    <span className="text-[10px] opacity-60 group-hover:opacity-100 transition-opacity">⚙️</span>
-                  </span>
-                  <span className="block text-[10px] text-emerald-600 font-semibold">
-                    {role === 'ROLE_ADMIN' ? 'Admin Hệ Thống' : (userProfile?.membershipType ? `${userProfile.membershipType} Member` : 'Khách Hàng')}
-                  </span>
-                </div>
-                <button 
-                  onClick={handleLogout}
-                  className="bg-slate-100 hover:bg-[#fde8e8] hover:text-rose-600 border border-slate-200 hover:border-[#fbcfe8]/40 text-xs px-3 py-2 rounded-xl transition-all font-bold text-slate-650"
-                >
-                  Đăng xuất
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center space-x-2">
-                <button 
-                  onClick={() => setActiveTab('login')} 
-                  className="text-slate-600 hover:text-slate-900 text-sm px-3 py-2 font-bold transition-colors"
-                >
-                  Đăng nhập
-                </button>
-                <button 
-                  onClick={() => setActiveTab('register')} 
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded-xl font-bold shadow-md shadow-emerald-600/10 hover:shadow-lg transition-all"
-                >
-                  Đăng ký
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
+      <Header />
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
-        
-        {/* TAB 1: Minimalist Elegant Home Page */}
-        {activeTab === 'home' && (
-          <div>
-            {/* Elegant Premium Sliding Banner */}
-            <div className="relative rounded-3xl overflow-hidden bg-slate-950 shadow-md mb-6 md:mb-10 h-[380px] sm:h-[420px] flex items-center">
-              {/* Infinite Marquee Background Image Slider */}
-              <div className="absolute inset-0 flex overflow-hidden pointer-events-none select-none z-0">
-                <div className="flex animate-marquee whitespace-nowrap h-full items-center">
-                  {/* Slide 1 */}
-                  {[
-                    "https://images.unsplash.com/photo-1559592481-74f4b16279f7?auto=format&fit=crop&w=800&q=80",
-                    "https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=800&q=80",
-                    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80",
-                    "https://images.unsplash.com/photo-1508873696983-2df519f0397e?auto=format&fit=crop&w=800&q=80",
-                    "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80",
-                    "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=800&q=80"
-                  ].map((url, i) => (
-                    <div key={i} className="inline-block w-[300px] sm:w-[400px] h-full relative flex-shrink-0">
-                      <img src={url} alt="Scenic destination" className="w-full h-full object-cover opacity-50" />
-                      <div className="absolute inset-0 bg-gradient-to-r from-slate-950/85 via-slate-950/30 to-slate-950/50" />
-                    </div>
-                  ))}
-                  {/* Duplicated Slide for seamless loop */}
-                  {[
-                    "https://images.unsplash.com/photo-1559592481-74f4b16279f7?auto=format&fit=crop&w=800&q=80",
-                    "https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=800&q=80",
-                    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80",
-                    "https://images.unsplash.com/photo-1508873696983-2df519f0397e?auto=format&fit=crop&w=800&q=80",
-                    "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80",
-                    "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=800&q=80"
-                  ].map((url, i) => (
-                    <div key={`dup-${i}`} className="inline-block w-[300px] sm:w-[400px] h-full relative flex-shrink-0">
-                      <img src={url} alt="Scenic destination duplicated" className="w-full h-full object-cover opacity-50" />
-                      <div className="absolute inset-0 bg-gradient-to-r from-slate-950/85 via-slate-950/30 to-slate-950/50" />
-                    </div>
-                  ))}
-                </div>
-              </div>
+        {activeTab === 'home' && <HomeView onViewTourDetails={setSelectedTourDetail} />}
 
-              {/* Glassmorphic Overlay for Text */}
-              <div className="relative z-10 max-w-2xl px-6 sm:px-16 text-left">
-                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/25 text-[10px] uppercase tracking-wider font-extrabold px-3 py-1.5 rounded-full backdrop-blur-sm">
-                  🍃 Hệ thống đặt Tour Trực tuyến Hàng đầu
-                </span>
-                <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white mt-5 leading-normal sm:leading-tight">
-                  Tận hưởng hành trình <br/>
-                  <span className="bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">Trọn vẹn & Đẳng cấp nhất</span>
-                </h1>
-                <p className="mt-4 text-slate-300 text-xs sm:text-sm leading-relaxed max-w-lg">
-                  E-Tour mang đến những trải nghiệm du lịch cao cấp hàng đầu Việt Nam. Tích hợp thanh toán QR VNPay/MoMo an toàn, phản hồi xác thực tự động và chăm sóc tận tâm.
-                </p>
-
-                <div className="mt-8 flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
-                  <button 
-                    onClick={() => {
-                      fetchTours(true); // maintain current search parameters
-                      setActiveTab('tours-catalog');
-                    }}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-6 py-3.5 rounded-xl shadow-lg shadow-emerald-600/25 transition-all duration-200 transform hover:scale-[1.02] active:scale-95 text-center"
-                  >
-                    Xem tất cả Tour
-                  </button>
-                  <button 
-                    onClick={() => {
-                      const element = document.getElementById('featured-tours');
-                      if (element) {
-                        element.scrollIntoView({ behavior: 'smooth' });
-                      }
-                    }}
-                    className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-6 py-3.5 rounded-xl transition-all duration-200 transform hover:scale-[1.02] active:scale-95 text-center flex items-center justify-center space-x-2 border border-white/10 backdrop-blur-sm"
-                  >
-                    <span>Khám phá ngay</span>
-                    <span>↓</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Search Widget */}
-            <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm mb-12 max-w-5xl mx-auto mt-8 relative z-10">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Điểm đến</label>
-                    <select 
-                      value={searchDest}
-                      onChange={(e) => setSearchDest(e.target.value)}
-                      className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors cursor-pointer font-semibold text-slate-700"
-                    >
-                      <option value="">-- Tất cả địa điểm --</option>
-                      <option value="Hà Nội">Hà Nội</option>
-                      <option value="Sa Pa">Sa Pa (Lào Cai)</option>
-                      <option value="Hà Giang">Hà Giang</option>
-                      <option value="Hạ Long">Vịnh Hạ Long</option>
-                      <option value="Ninh Bình">Ninh Bình</option>
-                      <option value="Quảng Bình">Quảng Bình (Phong Nha)</option>
-                      <option value="Huế">Huế</option>
-                      <option value="Đà Nẵng - Hội An">Đà Nẵng - Hội An</option>
-                      <option value="Quy Nhơn">Quy Nhơn (Bình Định)</option>
-                      <option value="Nha Trang">Nha Trang (Khánh Hòa)</option>
-                      <option value="Đà Lạt">Đà Lạt (Lâm Đồng)</option>
-                      <option value="Mũi Né">Mũi Né (Phan Thiết)</option>
-                      <option value="TP. Hồ Chí Minh">TP. Hồ Chí Minh (Sài Gòn)</option>
-                      <option value="Cần Thơ">Cần Thơ (Miền Tây)</option>
-                      <option value="Phú Quốc">Phú Quốc (Đảo Ngọc)</option>
-                      <option value="Singapore & Malaysia">Singapore & Malaysia (Quốc Tế)</option>
-                    </select>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Mức giá tối đa (VND)</label>
-                  <input 
-                    type="number" 
-                    placeholder="Ví dụ: 10000000"
-                    value={searchMaxPrice}
-                    onChange={(e) => setSearchMaxPrice(e.target.value)}
-                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ngày đi</label>
-                  <input 
-                    type="date"
-                    value={searchDate}
-                    onChange={(e) => setSearchDate(e.target.value)}
-                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors cursor-pointer text-slate-650"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-5 flex justify-end space-x-3 border-t border-[#f0f6f3] pt-4">
-                <button 
-                  onClick={() => {
-                    setSearchDest('');
-                    setSearchMaxPrice('');
-                    setSearchDate('');
-                    fetchTours();
-                  }}
-                  className="bg-slate-100 hover:bg-slate-200 text-[10px] text-slate-600 px-4 py-2.5 rounded-xl font-bold transition-all"
-                >
-                  Xóa lọc
-                </button>
-                <button 
-                  onClick={() => {
-                    fetchTours(true);
-                    setActiveTab('tours-catalog');
-                  }}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-[10px] text-white px-6 py-2.5 rounded-xl font-bold shadow-md shadow-emerald-600/10 transition-all"
-                >
-                  Tìm kiếm chuyến đi
-                </button>
-              </div>
-            </div>
-
-            {/* Featured Section Roster */}
-            <div id="featured-tours" className="mb-10">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-xl font-extrabold text-slate-800">📍 Hành trình đặc sắc nhất</h2>
-                  <p className="text-[11px] text-slate-400 mt-1">Các tour du lịch được đánh giá cao và lựa chọn nhiều nhất trong tuần.</p>
-                </div>
-                <button 
-                  onClick={handleViewAllTours}
-                  className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center space-x-1"
-                >
-                  <span>Xem thêm tour</span>
-                  <span>→</span>
-                </button>
-              </div>
-
-              {/* Small grid of 3 featured items */}
-              {loadingTours ? (
-                <div className="flex flex-col items-center justify-center py-20">
-                  <div className="w-10 h-10 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3" />
-                  <span className="text-xs text-slate-400">Đang đồng bộ dữ liệu...</span>
-                </div>
-              ) : tours.length === 0 ? (
-                <div className="bg-white border border-[#e6eef0] p-12 rounded-3xl text-center text-slate-400 text-xs">
-                  Không tìm thấy tour du lịch nào.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {tours.slice(0, 3).map((tour) => (
-                    <div key={tour.id} className="group bg-white border border-[#e6eef0] rounded-2xl overflow-hidden hover:shadow-lg transition-all duration-300 flex flex-col">
-                      <div className="relative h-44 bg-slate-100 overflow-hidden">
-                        <img 
-                          src={tour.image} 
-                          alt={tour.title} 
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                          onError={(e) => {
-                            e.target.src = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80";
-                          }}
-                        />
-                        <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-sm px-2.5 py-0.5 rounded-full text-[10px] font-bold text-emerald-700 shadow-sm">
-                          📍 {tour.destination}
-                        </div>
-                        <div className="absolute top-3 right-3">
-                          {tour.availableSlots === 0 ? (
-                            <span className="bg-rose-100 text-rose-700 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">Hết chỗ</span>
-                          ) : (
-                            <span className="bg-emerald-550 bg-emerald-50 text-emerald-700 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">Còn {tour.availableSlots} chỗ</span>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div className="p-5 flex-1 flex flex-col">
-                        <h3 className="text-sm font-bold text-slate-800 group-hover:text-emerald-700 transition-colors line-clamp-1">
-                          {tour.title}
-                        </h3>
-                        <div className="text-[10px] text-slate-450 text-slate-400 mt-2 pb-2.5 border-b border-[#f0f6f3]">
-                          Khởi hành: <strong>{tour.departureDate}</strong>
-                        </div>
-                        <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-2 mt-3 flex-1">
-                          {tour.itinerary}
-                        </p>
-
-                        <div className="mt-4 pt-3 border-t border-[#f0f6f3] flex items-center justify-between">
-                          <div>
-                            <span className="text-[10px] text-slate-400 block font-semibold">Giá từ</span>
-                            <span className="text-sm font-black text-rose-500">
-                              {formatPrice(tour.price)}
-                            </span>
-                          </div>
-
-                          <div className="flex space-x-1.5">
-                            <button 
-                              onClick={() => setSelectedTourDetail(tour)}
-                              className="bg-[#f0f6f3] hover:bg-[#e2ece7] text-emerald-700 text-[10px] font-bold px-3 py-2 rounded-lg transition-colors"
-                            >
-                              Chi tiết
-                            </button>
-                            <button 
-                              onClick={() => addToCart(tour, 1)}
-                              disabled={tour.availableSlots === 0}
-                              className={`text-[10px] font-bold px-3 py-2 rounded-lg transition-colors ${
-                                tour.availableSlots === 0 
-                                  ? 'bg-slate-100 text-slate-350 cursor-not-allowed'
-                                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm'
-                              }`}
-                            >
-                              Thêm 🛒
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Tour đang ưu đãi hấp dẫn */}
-            <div className="my-16">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-xl font-extrabold text-slate-800">🔥 Tour Đang Ưu Đãi Hấp Dẫn</h2>
-                  <p className="text-[11px] text-slate-400 mt-1">Các tour du lịch đang giảm giá kịch sàn. Đặt ngay kẻo lỡ!</p>
-                </div>
-              </div>
-
-              {tours.filter(t => t.discountPercent > 0).length === 0 ? (
-                <div className="bg-white border border-[#e6eef0] p-12 rounded-3xl text-center text-slate-400 text-xs">
-                  Hiện chưa có chương trình ưu đãi nào diễn ra. Quý khách vui lòng quay lại sau!
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {tours.filter(t => t.discountPercent > 0).map((tour) => {
-                    const promoPrice = tour.price * (100 - tour.discountPercent) / 100;
-                    return (
-                      <div key={tour.id} className="group bg-white border border-[#e6eef0] rounded-2xl overflow-hidden hover:shadow-lg transition-all duration-300 flex flex-col relative">
-                        {/* Sale Tag */}
-                        <div className="absolute top-3 left-3 z-10 bg-rose-650 bg-rose-600 text-white text-[10px] font-black px-2.5 py-1 rounded-lg shadow-md animate-pulse">
-                          -{tour.discountPercent}% OFF
-                        </div>
-
-                        <div className="relative h-44 bg-slate-100 overflow-hidden">
-                          <img 
-                            src={tour.image} 
-                            alt={tour.title} 
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                            onError={(e) => {
-                              e.target.src = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80";
-                            }}
-                          />
-                          <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur-sm px-2.5 py-0.5 rounded-full text-[10px] font-bold text-emerald-700 shadow-sm">
-                            📍 {tour.destination}
-                          </div>
-                        </div>
-                        
-                        <div className="p-5 flex-1 flex flex-col justify-between">
-                          <div className="space-y-2">
-                            <h3 className="text-sm font-bold text-slate-800 group-hover:text-emerald-700 transition-colors line-clamp-1">
-                              {tour.title}
-                            </h3>
-                            <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-2">
-                              {tour.itinerary}
-                            </p>
-                          </div>
-
-                          <div className="mt-4 pt-3 border-t border-[#f0f6f3] flex items-center justify-between">
-                            <div>
-                              <span className="text-[9px] text-slate-400 block font-semibold line-through">
-                                Giá gốc: {formatPrice(tour.price)}
-                              </span>
-                              <span className="text-sm font-black text-rose-600 block">
-                                Ưu đãi: {formatPrice(promoPrice)}
-                              </span>
-                            </div>
-
-                            <button 
-                              onClick={() => setSelectedTourDetail(tour)}
-                              className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-4 py-2 rounded-xl transition-all shadow-sm"
-                            >
-                              Xem chi tiết
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: Full Tours Catalog with Category filters */}
         {activeTab === 'tours-catalog' && (
-          <div>
-            <div className="border-b border-[#e6eef0] pb-6 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-extrabold text-slate-800">📂 Tất cả các chuyến đi du lịch</h1>
-                <p className="text-[11px] text-slate-400 mt-1">Đầy đủ thông tin, hành trình minh bạch, dịch vụ chuẩn 5 sao.</p>
-              </div>
-
-              {/* Categorization tabs with smooth sliding pill transition */}
-              <div className="flex bg-slate-100 border border-[#e6eef0] p-1 rounded-xl shadow-sm self-start relative overflow-hidden h-[38px] items-center">
-                <div 
-                  className="absolute bg-emerald-600 rounded-lg transition-all duration-300 ease-out shadow-sm shadow-emerald-600/10 h-[30px]"
-                  style={{
-                    width: '85px',
-                    left: activeCategory === 'all' ? '4px' : activeCategory === 'domestic' ? '89px' : '174px'
-                  }}
-                />
-                <button 
-                  onClick={() => setActiveCategory('all')}
-                  className={`relative z-10 text-[11px] font-bold px-4 py-2 rounded-lg transition-all duration-300 text-center ${activeCategory === 'all' ? 'text-white' : 'text-slate-500 hover:text-slate-800'}`}
-                  style={{ width: '85px' }}
-                >
-                  Tất cả
-                </button>
-                <button 
-                  onClick={() => setActiveCategory('domestic')}
-                  className={`relative z-10 text-[11px] font-bold px-4 py-2 rounded-lg transition-all duration-300 text-center ${activeCategory === 'domestic' ? 'text-white' : 'text-slate-500 hover:text-slate-800'}`}
-                  style={{ width: '85px' }}
-                >
-                  Trong nước
-                </button>
-                <button 
-                  onClick={() => setActiveCategory('international')}
-                  className={`relative z-10 text-[11px] font-bold px-4 py-2 rounded-lg transition-all duration-300 text-center ${activeCategory === 'international' ? 'text-white' : 'text-slate-500 hover:text-slate-800'}`}
-                  style={{ width: '85px' }}
-                >
-                  Quốc tế
-                </button>
-              </div>
-            </div>
-
-            {loadingTours ? (
-              <div className="flex flex-col items-center justify-center py-20">
-                <div className="w-10 h-10 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3" />
-                <span className="text-xs text-slate-400">Đang đồng bộ dữ liệu...</span>
-              </div>
-            ) : filteredToursList.length === 0 ? (
-              <div className="bg-white border border-[#e6eef0] p-16 rounded-3xl text-center text-slate-400 text-xs">
-                🔍 Không tìm thấy tour du lịch nào. Hãy đổi danh mục hoặc bộ lọc khác.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredToursList.map((tour) => (
-                  <div key={tour.id} className="group bg-white border border-[#e6eef0] rounded-2xl overflow-hidden hover:shadow-lg transition-all duration-300 flex flex-col relative">
-                    <div className="relative h-48 bg-slate-100 overflow-hidden">
-                      {tour.discountPercent > 0 && (
-                        <div className="absolute top-3 left-3 z-10 bg-rose-600 text-white text-[9px] font-black px-2 py-0.5 rounded shadow-sm animate-pulse">
-                          -{tour.discountPercent}%
-                        </div>
-                      )}
-                      <img 
-                        src={tour.image} 
-                        alt={tour.title} 
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        onError={(e) => {
-                          e.target.src = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80";
-                        }}
-                      />
-                      <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur-sm px-2.5 py-0.5 rounded-full text-[10px] font-bold text-emerald-700 shadow-sm">
-                        📍 {tour.destination}
-                      </div>
-                      <div className="absolute top-3 right-3">
-                        {tour.availableSlots === 0 ? (
-                          <span className="bg-rose-100 text-rose-700 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">Hết chỗ</span>
-                        ) : tour.availableSlots <= 3 ? (
-                          <span className="bg-rose-550 bg-rose-500 text-white text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase animate-pulse">Chỉ còn {tour.availableSlots} chỗ</span>
-                        ) : (
-                          <span className="bg-emerald-550 bg-emerald-50 text-emerald-700 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">Còn {tour.availableSlots} chỗ</span>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="p-5 flex-1 flex flex-col justify-between">
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-800 group-hover:text-emerald-700 transition-colors line-clamp-1">
-                          {tour.title}
-                        </h3>
-                        <div className="text-[10px] text-slate-400 mt-2 pb-2.5 border-b border-[#f0f6f3]">
-                          Khởi hành: <strong>{tour.departureDate}</strong>
-                        </div>
-                        <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-3 mt-3">
-                          {tour.itinerary}
-                        </p>
-                      </div>
-
-                      <div className="mt-4 pt-3 border-t border-[#f0f6f3] flex items-center justify-between">
-                        <div>
-                          {tour.discountPercent > 0 ? (
-                            <div>
-                              <span className="text-[9px] text-slate-400 block font-semibold line-through">
-                                Gốc: {formatPrice(tour.price)}
-                              </span>
-                              <span className="text-sm font-black text-rose-500 block">
-                                Ưu đãi: {formatPrice(tour.price * (100 - tour.discountPercent) / 100)}
-                              </span>
-                            </div>
-                          ) : (
-                            <div>
-                              <span className="text-[10px] text-slate-400 block font-semibold">Giá từ</span>
-                              <span className="text-sm font-black text-rose-500 block">
-                                {formatPrice(tour.price)}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex space-x-1.5">
-                          <button 
-                            onClick={() => setSelectedTourDetail(tour)}
-                            className="bg-[#f0f6f3] hover:bg-[#e2ece7] text-emerald-700 text-[10px] font-bold px-3.5 py-2.5 rounded-xl transition-colors"
-                          >
-                            Chi tiết
-                          </button>
-                          <button 
-                            onClick={() => addToCart(tour, 1)}
-                            disabled={tour.availableSlots === 0}
-                            className={`text-[10px] font-bold px-4 py-2.5 rounded-xl transition-all ${
-                              tour.availableSlots === 0 
-                                ? 'bg-slate-100 text-slate-350 cursor-not-allowed border border-slate-200'
-                                : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm'
-                            }`}
-                          >
-                            Đặt Tour 🛒
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <ToursCatalogView onViewTourDetails={setSelectedTourDetail} />
         )}
 
-        {/* TAB 3: Login panel */}
-        {activeTab === 'login' && (
-          <div className="max-w-md mx-auto my-12 bg-white border border-[#e6eef0] p-8 rounded-3xl shadow-sm relative overflow-hidden">
-            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-600 to-teal-500" />
-            <h2 className="text-xl font-extrabold text-slate-800 text-center">Đăng nhập tài khoản</h2>
-            <p className="text-slate-400 text-[11px] text-center mt-2">Đăng nhập để cập nhật giỏ hàng và xem lịch trình các chuyến đi</p>
+        {activeTab === 'login' && <LoginView />}
 
-            <form className="mt-6 space-y-4" onSubmit={(e) => {
-              const usernameInput = e.target.username.value;
-              const passwordInput = e.target.password.value;
-              handleAuth('login', e, { username: usernameInput, password: passwordInput });
-            }}>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Tên đăng nhập</label>
-                <input 
-                  type="text" 
-                  name="username"
-                  required
-                  placeholder="Nhập tên đăng nhập"
-                  className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
-                />
-              </div>
+        {activeTab === 'register' && <RegisterView />}
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Mật khẩu</label>
-                <input 
-                  type="password" 
-                  name="password"
-                  required
-                  placeholder="••••••••"
-                  className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
-                />
-              </div>
+        {activeTab === 'user-profile' && <UserProfileView />}
 
-              <button 
-                type="submit"
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white py-3.5 rounded-xl shadow-md shadow-emerald-600/10 hover:shadow-lg transition-all mt-4"
-              >
-                Xác nhận Đăng nhập
-              </button>
-            </form>
-
-            <div className="text-center text-[11px] text-slate-400 mt-6">
-              Bạn chưa có tài khoản thành viên?{' '}
-              <button onClick={() => setActiveTab('register')} className="text-emerald-600 font-bold hover:underline">
-                Đăng ký tài khoản mới
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 4: Register Panel */}
-        {activeTab === 'register' && (
-          <div className="max-w-md mx-auto my-12 bg-white border border-[#e6eef0] p-8 rounded-3xl shadow-sm relative overflow-hidden">
-            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-600 to-teal-500" />
-            <h2 className="text-xl font-extrabold text-slate-800 text-center">Đăng ký thành viên</h2>
-            <p className="text-slate-400 text-[11px] text-center mt-2">Bắt đầu trải nghiệm những tiện ích đặt tour số 1</p>
-
-            <form className="mt-6 space-y-4" onSubmit={(e) => {
-              const usernameInput = e.target.username.value;
-              const passwordInput = e.target.password.value;
-              const emailInput = e.target.email.value;
-              const fullNameInput = e.target.fullName.value;
-              const phoneNumberInput = e.target.phoneNumber.value;
-              const genderInput = e.target.gender.value;
-              const birthDateInput = e.target.birthDate.value;
-              handleAuth('register', e, { 
-                username: usernameInput, 
-                password: passwordInput, 
-                email: emailInput,
-                fullName: fullNameInput,
-                phoneNumber: phoneNumberInput,
-                gender: genderInput,
-                birthDate: birthDateInput
-              });
-            }}>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Tên đăng nhập</label>
-                <input 
-                  type="text" 
-                  name="username"
-                  required
-                  placeholder="Nhập tên đăng nhập"
-                  className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Họ và tên</label>
-                <input 
-                  type="text" 
-                  name="fullName"
-                  required
-                  placeholder="Nguyễn Văn A"
-                  className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Giới tính</label>
-                  <select 
-                    name="gender"
-                    required
-                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors cursor-pointer"
-                  >
-                    <option value="Nam">Nam</option>
-                    <option value="Nữ">Nữ</option>
-                    <option value="Khác">Khác</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ngày sinh</label>
-                  <input 
-                    type="date" 
-                    name="birthDate"
-                    required
-                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors cursor-pointer"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Số điện thoại</label>
-                <input 
-                  type="text" 
-                  name="phoneNumber"
-                  required
-                  placeholder="Ví dụ: 0987654321"
-                  className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Địa chỉ Email</label>
-                <input 
-                  type="email" 
-                  name="email"
-                  required
-                  placeholder="name@domain.com"
-                  className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Mật khẩu</label>
-                <input 
-                  type="password" 
-                  name="password"
-                  required
-                  placeholder="Tối thiểu 6 ký tự"
-                  className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-3 text-xs outline-none transition-colors"
-                />
-              </div>
-
-              <button 
-                type="submit"
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white py-3.5 rounded-xl shadow-md shadow-emerald-600/10 hover:shadow-lg transition-all mt-4"
-              >
-                Đăng ký thành viên mới
-              </button>
-            </form>
-
-            <div className="text-center text-[11px] text-slate-400 mt-6">
-              Bạn đã có tài khoản thành viên?{' '}
-              <button onClick={() => setActiveTab('login')} className="text-emerald-600 font-bold hover:underline">
-                Đăng nhập ngay
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 5: Admin Protected Dashboard */}
         {activeTab === 'admin-dashboard' && (
-          <div>
-            {role !== 'ROLE_ADMIN' ? (
-              <div className="bg-rose-50 border border-rose-250 border-rose-200 p-8 rounded-2xl text-center text-rose-600 my-10 max-w-lg mx-auto">
-                🛑 <strong>Yêu cầu xác thực Quản Trị!</strong> <br/>
-                Bạn cần đăng ký hoặc đăng nhập với đặc quyền Admin để sử dụng bảng CRM này.
-              </div>
-            ) : (
-              <div>
-                {/* Admin Header Board */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#e6eef0] pb-6 mb-8 gap-4">
-                  <div>
-                    <h1 className="text-2xl font-extrabold text-slate-800">Bảng Điều Khiển Quản Trị CRM</h1>
-                    <p className="text-[11px] text-slate-400 mt-1">Tổng hợp doanh thu, quản lý danh mục và xét duyệt hóa đơn email cho khách hàng.</p>
-                  </div>
-                  <button 
-                    onClick={openAddTour}
-                    className="bg-emerald-650 bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white px-5 py-3 rounded-xl shadow-md transition-all self-start flex items-center space-x-2"
-                  >
-                    <span>➕ Thêm Tour Mới</span>
-                  </button>
-                </div>
-
-                {/* Admin Sub Tab switcher bar */}
-                <div className="flex space-x-3 mb-8 border-b border-[#eff6f3] pb-4">
-                  <button 
-                    onClick={() => setAdminTab('bookings')}
-                    className={`text-xs font-bold px-4 py-2.5 rounded-xl transition-all ${adminTab === 'bookings' ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/10' : 'bg-slate-100 text-slate-500 hover:text-slate-800'}`}
-                  >
-                    📊 Đơn hàng & Thống kê
-                  </button>
-                  <button 
-                    onClick={() => setAdminTab('members')}
-                    className={`text-xs font-bold px-4 py-2.5 rounded-xl transition-all ${adminTab === 'members' ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/10' : 'bg-slate-100 text-slate-500 hover:text-slate-800'}`}
-                  >
-                    👥 Quản lý Thành viên (VIP)
-                  </button>
-                </div>
-
-                {adminTab === 'bookings' && (
-                  <>
-                    {/* Aggregated indicators */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                      <div className="bg-white border border-[#e6eef0] p-6 rounded-2xl">
-                        <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Tổng doanh thu thực nhận</span>
-                        <span className="text-2xl font-black text-emerald-600 mt-2 block">
-                          {new Intl.NumberFormat('vi-VN').format(
-                            adminBookings
-                              .filter(b => b.status === 'PAID')
-                              .reduce((sum, b) => sum + b.totalPrice, 0)
-                          )} <span className="text-xs font-normal text-slate-450">VND</span>
-                        </span>
-                        <span className="text-[10px] text-slate-400 block mt-2">Dựa trên các đơn đặt trạng thái PAID</span>
-                      </div>
-
-                      <div className="bg-white border border-[#e6eef0] p-6 rounded-2xl">
-                        <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Hóa đơn đã thanh toán</span>
-                        <span className="text-2xl font-black text-slate-800 mt-2 block">
-                          {adminBookings.filter(b => b.status === 'PAID').length} <span className="text-xs font-normal text-slate-450">đơn</span>
-                        </span>
-                        <span className="text-[10px] text-slate-400 block mt-2">Hệ thống đã tự động gửi vé qua Email</span>
-                      </div>
-
-                      <div className="bg-white border border-[#e6eef0] p-6 rounded-2xl">
-                        <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Hóa đơn đang chờ duyệt (PENDING)</span>
-                        <span className="text-2xl font-black text-amber-600 mt-2 block">
-                          {adminBookings.filter(b => b.status === 'PENDING').length} <span className="text-xs font-normal text-slate-450">đơn</span>
-                        </span>
-                        <span className="text-[10px] text-amber-655 text-amber-600 block mt-2 font-medium animate-pulse">Quét hủy sau 15 phút không thanh toán</span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                      {/* Left Column: Analytics & Orders */}
-                      <div className="lg:col-span-2 space-y-8">
-                        
-                        {/* Dynamic Bar Revenue statistics */}
-                        <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm">
-                          <h2 className="text-sm font-bold text-slate-800 mb-4">📊 Báo cáo doanh số tour bán chạy nhất</h2>
-                          
-                          {adminRevenueReports.length === 0 ? (
-                            <div className="py-12 text-center text-xs text-slate-400">
-                              Chưa có dữ liệu thanh toán để thống kê.
-                            </div>
-                          ) : (
-                            <div className="space-y-4">
-                              {adminRevenueReports.map((report, idx) => {
-                                const maxVal = Math.max(...adminRevenueReports.map(r => r.revenue), 1);
-                                const percent = (report.revenue / maxVal) * 100;
-                                return (
-                                  <div key={idx} className="space-y-1.5">
-                                    <div className="flex justify-between text-xs font-semibold">
-                                      <span className="text-slate-700 truncate max-w-xs">{report.tourTitle}</span>
-                                      <span className="text-emerald-700 font-extrabold">
-                                        {new Intl.NumberFormat('vi-VN').format(report.revenue)} đ{' '}
-                                        <span className="text-slate-400 text-[10px] font-normal">({report.bookingsCount} lượt mua)</span>
-                                      </span>
-                                    </div>
-                                    <div className="w-full bg-[#f0f6f3] h-4 rounded-full overflow-hidden border border-[#e2ece7]">
-                                      <div 
-                                        className="bg-gradient-to-r from-emerald-600 to-teal-500 h-full rounded-full transition-all duration-1000"
-                                        style={{ width: `${percent}%` }}
-                                      />
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Admin Bookings Table */}
-                        <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm overflow-hidden">
-                          <h2 className="text-sm font-bold text-slate-800 mb-4">📋 Lịch sử và trạng thái các đơn đặt vé</h2>
-                          
-                          {adminBookings.length === 0 ? (
-                            <div className="py-12 text-center text-xs text-slate-400">Không có hóa đơn đăng ký.</div>
-                          ) : (
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-left text-xs border-collapse">
-                                <thead>
-                                  <tr className="border-b border-[#e6eef0] text-slate-400 uppercase tracking-wider font-bold">
-                                    <th className="py-3 px-3">Đơn</th>
-                                    <th className="py-3 px-3">Khách hàng</th>
-                                    <th className="py-3 px-3">Tour du lịch</th>
-                                    <th className="py-3 px-3">Vé mua</th>
-                                    <th className="py-3 px-3">Tổng tiền</th>
-                                    <th className="py-3 px-3">Trạng thái</th>
-                                    <th className="py-3 px-3 text-right">Hành động</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {adminBookings.map((b) => (
-                                    <tr key={b.id} className="border-b border-[#f0f6f3] hover:bg-slate-50/50 transition-colors">
-                                      <td className="py-3.5 px-3 font-mono font-bold text-slate-800">#{b.id}</td>
-                                      <td className="py-3.5 px-3">
-                                        <div className="font-bold text-slate-800">{b.customerName}</div>
-                                        <div className="text-[10px] text-slate-400">{b.customerEmail} | {b.customerPhone}</div>
-                                      </td>
-                                      <td className="py-3.5 px-3 max-w-[130px] truncate font-semibold">{b.tourTitle}</td>
-                                      <td className="py-3.5 px-3 font-bold">{b.ticketsCount} vé</td>
-                                      <td className="py-3.5 px-3 text-rose-500 font-extrabold">
-                                        {formatPrice(b.totalPrice)}
-                                      </td>
-                                      <td className="py-3.5 px-3">
-                                        {b.status === 'PAID' && (
-                                          <span className="bg-emerald-50 border border-emerald-100 text-emerald-700 text-[9px] px-2 py-0.5 rounded-full font-bold">Đã thanh toán</span>
-                                        )}
-                                        {b.status === 'PENDING' && (
-                                          <span className="bg-amber-50 border border-amber-100 text-amber-700 text-[9px] px-2 py-0.5 rounded-full font-bold animate-pulse">Chờ thanh toán</span>
-                                        )}
-                                        {b.status === 'CANCELLED' && (
-                                          <span className="bg-slate-100 border border-slate-200 text-slate-400 text-[9px] px-2 py-0.5 rounded-full font-bold">Đã hủy</span>
-                                        )}
-                                      </td>
-                                      <td className="py-3.5 px-3 text-right">
-                                        {b.status === 'PENDING' && (
-                                          <div className="flex space-x-1 justify-end">
-                                            <button 
-                                              onClick={() => adminApproveBooking(b.id)}
-                                              className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg"
-                                            >
-                                              Duyệt
-                                            </button>
-                                            <button 
-                                              onClick={() => adminCancelBooking(b.id)}
-                                              className="bg-slate-100 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 hover:border-rose-200 text-slate-500 text-[10px] font-bold px-2 py-1 rounded-lg"
-                                            >
-                                              Hủy
-                                            </button>
-                                          </div>
-                                        )}
-                                        {b.status === 'PAID' && (
-                                          <button 
-                                            onClick={() => adminCancelBooking(b.id)}
-                                            className="text-[10px] text-slate-450 text-slate-400 hover:text-rose-600 font-bold"
-                                          >
-                                            Hủy đơn
-                                          </button>
-                                        )}
-                                        {b.status === 'CANCELLED' && (
-                                          <span className="text-[10px] text-slate-400 italic">Đã hủy bỏ</span>
-                                        )}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Right Column: Tours list for CRUD editing */}
-                      <div className="space-y-8">
-                        <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm">
-                          <h2 className="text-sm font-bold text-slate-800 mb-4">🌍 Kho dữ liệu Tour hiện hoạt</h2>
-                          
-                          <div className="space-y-4">
-                            {tours.map((t) => (
-                              <div key={t.id} className="bg-[#f8faf9] border border-[#e2ece7] p-4 rounded-2xl space-y-3">
-                                <div className="flex items-center space-x-3">
-                                  <img 
-                                    src={t.image} 
-                                    alt={t.title} 
-                                    className="w-12 h-12 object-cover rounded-lg border border-[#e2ece7]"
-                                    onError={(e) => {
-                                      e.target.src = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80";
-                                    }}
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <h3 className="text-xs font-bold text-slate-800 truncate">{t.title}</h3>
-                                    <span className="text-[10px] text-slate-400 mt-1 block">📍 {t.destination}</span>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center justify-between text-[10px] border-t border-[#eff6f3] pt-2">
-                                  <span className="text-slate-550 text-slate-500 font-medium">Chỗ trống: <strong className="text-slate-700">{t.availableSlots}</strong></span>
-                                  <span className="text-rose-500 font-extrabold">{formatPrice(t.price)}</span>
-                                </div>
-
-                                <div className="flex space-x-2 pt-1">
-                                  <button 
-                                    onClick={() => openEditTour(t)}
-                                    className="flex-1 bg-white hover:bg-slate-100 text-slate-600 text-[10px] font-bold py-1.5 rounded-lg border border-[#e2ece7] transition-all"
-                                  >
-                                    ✏️ Sửa
-                                  </button>
-                                  <button 
-                                    onClick={() => softDeleteTour(t.id)}
-                                    className="flex-1 bg-[#fff5f5] hover:bg-[#ffebeb] text-rose-600 text-[10px] font-bold py-1.5 rounded-lg border border-[#ffd6d6] transition-all"
-                                  >
-                                    🗑️ Xóa mềm
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {adminTab === 'members' && (
-                  <div className="bg-white border border-[#e6eef0] p-6 rounded-3xl shadow-sm overflow-hidden animate-scaleIn">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 mb-4 border-b border-[#f0f6f3]">
-                      <div>
-                        <h2 className="text-sm font-bold text-slate-800">👥 Danh sách Thành viên & Thẻ VIP</h2>
-                        <p className="text-[11px] text-slate-400 mt-1">Danh sách thành viên đăng ký ứng dụng, tích lũy điểm và hưởng ưu đãi VIP.</p>
-                      </div>
-                      <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 font-extrabold text-[10px] px-3 py-1.5 rounded-full">
-                        Tổng số: {adminMembers.length} thành viên
-                      </span>
-                    </div>
-
-                    {adminMembers.length === 0 ? (
-                      <div className="py-12 text-center text-xs text-slate-400">Không có thành viên đăng ký.</div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead>
-                            <tr className="border-b border-[#e6eef0] text-slate-400 uppercase tracking-wider font-bold">
-                              <th className="py-3 px-3">Họ và tên</th>
-                              <th className="py-3 px-3">Tên đăng nhập</th>
-                              <th className="py-3 px-3">Hạng thẻ</th>
-                              <th className="py-3 px-3">Điểm hiện tại</th>
-                              <th className="py-3 px-3">Điểm tích lũy</th>
-                              <th className="py-3 px-3">Số Tour đi</th>
-                              <th className="py-3 px-3 text-right">Thao tác</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {adminMembers.map((member) => (
-                              <tr key={member.id} className="border-b border-[#f0f6f3] hover:bg-slate-50/50 transition-colors">
-                                <td className="py-3.5 px-3">
-                                  <div className="font-bold text-slate-800">{member.fullName || 'Chưa cập nhật'}</div>
-                                  <div className="text-[10px] text-slate-400">{member.email} | {member.phoneNumber || 'Chưa có SĐT'}</div>
-                                </td>
-                                <td className="py-3.5 px-3 font-mono font-bold text-slate-650">{member.username}</td>
-                                <td className="py-3.5 px-3">
-                                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
-                                    member.membershipType === 'GOLD' 
-                                      ? 'bg-yellow-50 text-yellow-700 border-yellow-200 shadow-sm' 
-                                      : member.membershipType === 'SILVER' 
-                                        ? 'bg-slate-50 text-slate-700 border-slate-200' 
-                                        : 'bg-amber-50 text-amber-700 border-amber-200'
-                                  }`}>
-                                    {member.membershipType}
-                                  </span>
-                                </td>
-                                <td className="py-3.5 px-3 font-extrabold text-slate-800">{member.currentPoints} pts</td>
-                                <td className="py-3.5 px-3 font-bold text-slate-500">{member.totalPointsAccumulated} pts</td>
-                                <td className="py-3.5 px-3 font-bold text-slate-500">{member.totalToursParticipated} tours</td>
-                                <td className="py-3.5 px-3 text-right space-x-2">
-                                  <button 
-                                    onClick={() => {
-                                      setAdjustingMember(member);
-                                      setAdjustPointsChange('');
-                                      setAdjustReason('');
-                                      setShowPointsAdjustModal(true);
-                                    }}
-                                    className="bg-[#f0f6f3] hover:bg-[#e2ece7] text-emerald-700 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all"
-                                  >
-                                    ✏️ Sửa điểm
-                                  </button>
-                                  <button 
-                                    onClick={() => fetchMemberHistory(member.id)}
-                                    className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all"
-                                  >
-                                    📜 Lịch sử
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <AdminDashboardView
+            onAddTour={handleAddTourClick}
+            onEditTour={handleEditTourClick}
+            onAdjustPoints={handleAdjustPointsClick}
+            onViewHistory={handleViewHistoryClick}
+            refreshCounter={adminRefreshCounter}
+          />
         )}
-
-        {/* TAB 6: User Profile Settings */}
-        {activeTab === 'user-profile' && (
-          <div className="max-w-2xl mx-auto my-12 bg-white border border-[#e6eef0] p-8 rounded-3xl shadow-sm relative overflow-hidden">
-            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-600 to-teal-500" />
-            
-            {/* VIP Membership Card Display */}
-            {userProfile && (
-              <div className={`relative rounded-3xl overflow-hidden shadow-xl p-6 text-white mb-8 border border-white/10 ${
-                userProfile.membershipType === 'GOLD' 
-                  ? 'bg-gradient-to-br from-yellow-600 via-amber-500 to-yellow-500 shadow-yellow-600/20' 
-                  : userProfile.membershipType === 'SILVER' 
-                    ? 'bg-gradient-to-br from-slate-600 via-slate-500 to-slate-400 shadow-slate-500/15'
-                    : 'bg-gradient-to-br from-amber-900 to-amber-700 shadow-amber-950/10'
-              }`}>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="text-[10px] uppercase font-black tracking-widest bg-white/20 px-2.5 py-1 rounded-full backdrop-blur-xs">
-                      🍀 E-TOUR VIP MEMBER CARD
-                    </span>
-                    <h3 className="text-xl font-black tracking-wide mt-3">{userProfile.fullName}</h3>
-                    <p className="text-[11px] opacity-75 mt-0.5">Mã thành viên: #{username}</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-2xl font-black block tracking-widest">{userProfile.membershipType}</span>
-                    <span className="text-[9px] uppercase tracking-wider opacity-85 block mt-1">Hạng thành viên</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4 border-t border-white/20 pt-5 mt-6 text-center">
-                  <div>
-                    <span className="text-[9px] uppercase tracking-wider block opacity-75">Tour đã đi</span>
-                    <strong className="text-base font-black block mt-1">{userProfile.totalToursParticipated} chuyến</strong>
-                  </div>
-                  <div>
-                    <span className="text-[9px] uppercase tracking-wider block opacity-75">Tích lũy lịch sử</span>
-                    <strong className="text-base font-black block mt-1">{userProfile.totalPointsAccumulated} pts</strong>
-                  </div>
-                  <div>
-                    <span className="text-[9px] uppercase tracking-wider block opacity-75">Điểm khả dụng</span>
-                    <strong className="text-base font-black block mt-1">{userProfile.currentPoints} pts</strong>
-                  </div>
-                </div>
-
-                {/* Progress bar to next level */}
-                <div className="mt-6 space-y-2">
-                  <div className="flex justify-between text-[10px] font-bold">
-                    <span>Hạng tiếp theo: {userProfile.membershipType === 'GOLD' ? 'CẤP ĐỘ CAO NHẤT' : userProfile.membershipType === 'SILVER' ? 'GOLD (5,000 pts)' : 'SILVER (1,000 pts)'}</span>
-                    <span>{userProfile.membershipType === 'GOLD' ? 'Đã đạt VIP tối đa' : `Cần thêm ${userProfile.pointsNeededToNextLevel} pts`}</span>
-                  </div>
-                  <div className="w-full bg-white/20 h-2 rounded-full overflow-hidden">
-                    <div 
-                      className="bg-white h-full rounded-full transition-all duration-1000"
-                      style={{ 
-                        width: userProfile.membershipType === 'GOLD' 
-                          ? '100%' 
-                          : userProfile.membershipType === 'SILVER'
-                            ? `${Math.min(100, (userProfile.currentPoints / 5000) * 100)}%`
-                            : `${Math.min(100, (userProfile.currentPoints / 1000) * 100)}%`
-                      }}
-                    />
-                  </div>
-                  <p className="text-[9px] opacity-85 leading-normal mt-2">
-                    🌟 Quyền lợi: {
-                      userProfile.membershipType === 'GOLD' 
-                        ? 'Giảm trực tiếp 5% cho tất cả các tour đang ưu đãi kịch sàn + Ưu tiên hỗ trợ VIP.' 
-                        : userProfile.membershipType === 'SILVER'
-                          ? 'Giảm trực tiếp 3% cho tất cả các tour đang ưu đãi kịch sàn.'
-                          : 'Quyền lợi cơ bản, tích lũy 1 điểm cho mỗi 100.000 đ chi tiêu thực nhận.'
-                    }
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <h2 className="text-lg font-extrabold text-slate-800 text-center">Thông tin chi tiết tài khoản</h2>
-            <p className="text-slate-400 text-[11px] text-center mt-1">Cập nhật hồ sơ cá nhân, số chứng minh, hộ chiếu của bạn</p>
-
-            {profileLoading && !profileEmail ? (
-              <div className="flex flex-col items-center justify-center py-12">
-                <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3" />
-                <span className="text-xs text-slate-400">Đang tải thông tin...</span>
-              </div>
-            ) : (
-              <form className="mt-6 space-y-6" onSubmit={handleUpdateProfile}>
-                
-                {/* Section 1: Thông tin chung */}
-                <div className="space-y-4">
-                  <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-[#eff6f3] pb-2">📂 1. Thông tin cá nhân cơ bản</h3>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Tên đăng nhập (Username)</label>
-                      <input 
-                        type="text" 
-                        value={username}
-                        disabled
-                        className="w-full bg-slate-50 border border-[#e2ece7] text-slate-400 rounded-xl px-4 py-2.5 text-xs outline-none cursor-not-allowed font-semibold"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Họ và tên bắt buộc</label>
-                      <input 
-                        type="text" 
-                        required
-                        value={profileFullName}
-                        onChange={(e) => setProfileFullName(e.target.value)}
-                        placeholder="Nguyễn Văn A"
-                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Số điện thoại bắt buộc</label>
-                      <input 
-                        type="text" 
-                        required
-                        value={profilePhoneNumber}
-                        onChange={(e) => setProfilePhoneNumber(e.target.value)}
-                        placeholder="Ví dụ: 0987654321"
-                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Địa chỉ Email bắt buộc</label>
-                      <input 
-                        type="email" 
-                        required
-                        value={profileEmail}
-                        onChange={(e) => setProfileEmail(e.target.value)}
-                        placeholder="name@domain.com"
-                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Giới tính bắt buộc</label>
-                      <select 
-                        required
-                        value={profileGender}
-                        onChange={(e) => setProfileGender(e.target.value)}
-                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors cursor-pointer"
-                      >
-                        <option value="Nam">Nam</option>
-                        <option value="Nữ">Nữ</option>
-                        <option value="Khác">Khác</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ngày sinh bắt buộc</label>
-                      <input 
-                        type="date" 
-                        required
-                        value={profileBirthDate}
-                        onChange={(e) => setProfileBirthDate(e.target.value)}
-                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors cursor-pointer"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Quốc tịch</label>
-                      <input 
-                        type="text" 
-                        value={profileNationality}
-                        onChange={(e) => setProfileNationality(e.target.value)}
-                        placeholder="Việt Nam"
-                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Địa chỉ liên hệ</label>
-                      <input 
-                        type="text" 
-                        value={profileAddress}
-                        onChange={(e) => setProfileAddress(e.target.value)}
-                        placeholder="Địa chỉ cụ thể của bạn"
-                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 2: Identity Documents */}
-                <div className="space-y-4">
-                  <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-[#eff6f3] pb-2">💳 2. Căn cước công dân & Hộ chiếu</h3>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Số CCCD / CMND</label>
-                      <input 
-                        type="text" 
-                        value={profileCccd}
-                        onChange={(e) => setProfileCccd(e.target.value)}
-                        placeholder="Số CCCD 12 số"
-                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ngày cấp CCCD</label>
-                      <input 
-                        type="date" 
-                        value={profileCccdIssueDate}
-                        onChange={(e) => setProfileCccdIssueDate(e.target.value)}
-                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors cursor-pointer"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Nơi cấp CCCD</label>
-                      <input 
-                        type="text" 
-                        value={profileCccdIssuePlace}
-                        onChange={(e) => setProfileCccdIssuePlace(e.target.value)}
-                        placeholder="Cục Cảnh Sát..."
-                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Số Hộ chiếu (Passport)</label>
-                      <input 
-                        type="text" 
-                        value={profilePassport}
-                        onChange={(e) => setProfilePassport(e.target.value)}
-                        placeholder="Mã số Hộ chiếu"
-                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ngày cấp Hộ chiếu</label>
-                      <input 
-                        type="date" 
-                        value={profilePassportIssueDate}
-                        onChange={(e) => setProfilePassportIssueDate(e.target.value)}
-                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors cursor-pointer"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ngày hết hạn Hộ chiếu</label>
-                      <input 
-                        type="date" 
-                        value={profilePassportExpiryDate}
-                        onChange={(e) => setProfilePassportExpiryDate(e.target.value)}
-                        className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors cursor-pointer"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 3: Password confirmation */}
-                <div className="space-y-4">
-                  <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-[#eff6f3] pb-2">🔑 3. Thay đổi mật khẩu & Xác thực</h3>
-                  
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Mật khẩu mới (Bỏ trống nếu không muốn thay đổi)</label>
-                    <input 
-                      type="password" 
-                      value={profileNewPassword}
-                      onChange={(e) => setProfileNewPassword(e.target.value)}
-                      placeholder="Tối thiểu 6 ký tự"
-                      className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                    />
-                  </div>
-
-                  <div className="bg-rose-50/50 border border-rose-100 p-4 rounded-2xl">
-                    <label className="block text-[10px] font-bold text-rose-600 uppercase tracking-wider mb-2">Nhập Mật khẩu hiện tại bắt buộc (Để lưu thay đổi)</label>
-                    <input 
-                      type="password" 
-                      required
-                      value={profileOldPassword}
-                      onChange={(e) => setProfileOldPassword(e.target.value)}
-                      placeholder="Nhập mật khẩu hiện tại của bạn"
-                      className="w-full bg-white border border-rose-200 focus:border-rose-400 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex space-x-3 pt-4 border-t border-[#f0f6f3]">
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      setProfileOldPassword('');
-                      setProfileNewPassword('');
-                      setActiveTab('home');
-                    }}
-                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 py-3.5 rounded-xl transition-all"
-                  >
-                    Hủy bỏ
-                  </button>
-                  <button 
-                    type="submit"
-                    disabled={profileLoading}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-xs font-bold text-white py-3.5 rounded-xl shadow-md shadow-emerald-600/10 hover:shadow-lg transition-all"
-                  >
-                    {profileLoading ? 'Đang lưu...' : 'Lưu tất cả thông tin'}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        )}
-
       </main>
 
       {/* FULL SCREEN MODAL: Tour Itinerary Details */}
-      {selectedTourDetail && (
-        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white border border-[#e6eef0] w-full max-w-2xl rounded-3xl shadow-xl overflow-hidden relative animate-scaleIn">
-            <div className="absolute top-0 inset-x-0 h-1.5 bg-emerald-600" />
-            
-            <div className="relative h-56 bg-slate-100">
-              <img 
-                src={selectedTourDetail.image} 
-                alt={selectedTourDetail.title} 
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  e.target.src = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80";
-                }}
-              />
-              <button 
-                onClick={() => setSelectedTourDetail(null)}
-                className="absolute top-4 right-4 bg-white/95 text-slate-700 font-extrabold w-8 h-8 rounded-full flex items-center justify-center shadow-md hover:bg-slate-100"
-              >
-                ✕
-              </button>
-              <div className="absolute bottom-4 left-4 bg-white/95 px-3 py-1 rounded-full text-xs font-bold text-emerald-700 shadow-sm">
-                📍 {selectedTourDetail.destination}
-              </div>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div>
-                <h3 className="text-lg font-bold text-slate-800">{selectedTourDetail.title}</h3>
-                <div className="flex items-center justify-between text-xs text-slate-400 mt-2 pb-2.5 border-b border-[#f0f6f3]">
-                  <span>Ngày khởi hành: <strong className="text-slate-700">{selectedTourDetail.departureDate}</strong></span>
-                  <span>
-                    Mức giá: {' '}
-                    {selectedTourDetail.discountPercent > 0 ? (
-                      <strong className="text-rose-500">
-                        <span className="line-through text-slate-400 mr-2 text-[10px]">{formatPrice(selectedTourDetail.price)}</span>
-                        {formatPrice(selectedTourDetail.price * (100 - selectedTourDetail.discountPercent) / 100)}
-                        <span className="ml-2 text-[9px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-black">-{selectedTourDetail.discountPercent}%</span>
-                      </strong>
-                    ) : (
-                      <strong className="text-rose-500">{formatPrice(selectedTourDetail.price)}</strong>
-                    )}
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">🗺️ Hành trình chuyến đi chi tiết:</h4>
-                <div className="bg-[#f8faf9] border border-[#e2ece7] p-4 rounded-xl max-h-48 overflow-y-auto text-xs text-slate-500 leading-relaxed whitespace-pre-line">
-                  {selectedTourDetail.itinerary}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-4 border-t border-[#f0f6f3]">
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-semibold">Tình trạng giữ chỗ</span>
-                  <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-1 rounded-full">
-                    Còn trống {selectedTourDetail.availableSlots} chỗ
-                  </span>
-                </div>
-
-                <div className="flex space-x-2">
-                  <button 
-                    onClick={() => setSelectedTourDetail(null)}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold px-5 py-3 rounded-xl transition-all"
-                  >
-                    Đóng
-                  </button>
-                  <button 
-                    onClick={() => {
-                      addToCart(selectedTourDetail, 1);
-                      setSelectedTourDetail(null);
-                    }}
-                    disabled={selectedTourDetail.availableSlots === 0}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-6 py-3 rounded-xl shadow-md transition-all"
-                  >
-                    Thêm vào giỏ hàng 🛒
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <TourDetailModal tour={selectedTourDetail} onClose={() => setSelectedTourDetail(null)} />
 
       {/* SLIDE-OVER DRAWER: Shopping Cart Sidebar */}
-      {showCartDrawer && (
-        <div className="fixed inset-0 z-50 bg-slate-950/30 backdrop-blur-xs flex justify-end">
-          <div className="bg-white border-l border-[#e6eef0] w-full max-w-md h-full shadow-2xl flex flex-col relative animate-scaleIn">
-            <div className="absolute top-0 inset-x-0 h-1 bg-emerald-600" />
-            
-            <div className="p-6 border-b border-[#f0f6f3] flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <span className="text-lg">🛒</span>
-                <h3 className="text-base font-extrabold text-slate-800">Giỏ hàng du lịch của bạn</h3>
-              </div>
-              <button 
-                onClick={() => setShowCartDrawer(false)}
-                className="text-slate-400 hover:text-slate-700 font-extrabold text-lg"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* List items inside cart */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {cart.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center space-y-3 text-slate-400 text-xs">
-                  <span>🛒</span>
-                  <span>Giỏ hàng của bạn đang trống! Hãy khám phá danh sách tour để thêm vé.</span>
-                </div>
-              ) : (
-                cart.map((item, idx) => (
-                  <div key={idx} className="bg-[#f8faf9] border border-[#e2ece7] p-4 rounded-2xl space-y-3 flex flex-col">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-extrabold text-slate-800 truncate pr-4 max-w-[200px]">{item.tour.title}</h4>
-                      <button 
-                        onClick={() => removeFromCart(item.tour.id)}
-                        className="text-slate-450 text-slate-400 hover:text-rose-600 text-xs"
-                      >
-                        Xóa
-                      </button>
-                    </div>
-
-                    <div className="flex items-center justify-between border-t border-[#eff6f3] pt-2 text-xs">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Đơn giá</span>
-                        {item.tour.discountPercent > 0 ? (
-                          <span className="font-bold text-slate-700">
-                            <span className="line-through text-slate-400 mr-1.5 text-[10px]">{formatPrice(item.tour.price)}</span>
-                            {formatPrice(getBookingPromoPrice(item.tour))}
-                          </span>
-                        ) : (
-                          <span className="font-bold text-slate-700">{formatPrice(item.tour.price)}</span>
-                        )}
-                      </div>
-
-                      {/* Ticket counts adjustments */}
-                      <div className="flex items-center space-x-2 bg-white border border-[#e2ece7] rounded-lg p-1">
-                        <button 
-                          onClick={() => updateCartCount(item.tour.id, item.ticketsCount - 1)}
-                          className="px-2 py-0.5 hover:bg-slate-100 rounded text-slate-650 font-bold"
-                        >
-                          -
-                        </button>
-                        <span className="font-bold px-2">{item.ticketsCount}</span>
-                        <button 
-                          onClick={() => updateCartCount(item.tour.id, item.ticketsCount + 1)}
-                          className="px-2 py-0.5 hover:bg-slate-100 rounded text-slate-650 font-bold"
-                        >
-                          +
-                        </button>
-                      </div>
-
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-400 block">Thành tiền</span>
-                        <span className="font-extrabold text-rose-500">{formatPrice(getBookingFinalPrice(item.tour, item.ticketsCount))}</span>
-                        {userProfile && item.tour.discountPercent > 0 && (userProfile.membershipType === 'SILVER' || userProfile.membershipType === 'GOLD') && (
-                          <span className="text-[8px] text-emerald-600 font-bold block">(Đã giảm VIP {userProfile.membershipType === 'SILVER' ? '3%' : '5%'})</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Cart footer and Checkout actions */}
-            {cart.length > 0 && (
-              <div className="p-6 border-t border-[#f0f6f3] bg-[#f8faf9] space-y-4">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-550 text-slate-500 font-medium">Tổng tạm tính:</span>
-                  <strong className="text-lg font-black text-rose-500">{formatPrice(getCartTotal())}</strong>
-                </div>
-
-                <div className="flex space-x-2">
-                  <button 
-                    onClick={clearCart}
-                    className="flex-1 bg-white border border-[#e2ece7] hover:bg-slate-100 text-xs font-bold py-3.5 rounded-xl text-slate-600 transition-colors"
-                  >
-                    Xóa tất cả
-                  </button>
-                  <button 
-                    onClick={async () => {
-                      setShowCartDrawer(false);
-                      if (token) {
-                        try {
-                          const res = await axios.get('/users/profile');
-                          setCheckoutName(res.data.fullName || '');
-                          setCheckoutEmail(res.data.email || '');
-                          setCheckoutPhone(res.data.phoneNumber || '');
-                        } catch (err) {
-                          console.error('Không thể tự động điền thông tin cá nhân:', err);
-                          setCheckoutName('');
-                          setCheckoutEmail('');
-                          setCheckoutPhone('');
-                        }
-                      } else {
-                        setCheckoutName('');
-                        setCheckoutEmail('');
-                        setCheckoutPhone('');
-                      }
-                      setShowCheckoutModal(true);
-                    }}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-3.5 rounded-xl shadow-md transition-colors"
-                  >
-                    Tiến hành Thanh toán
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <CartDrawer onCheckout={() => setShowCheckoutModal(true)} />
 
       {/* POPUP MODAL: Checkout / Customer Contact Form */}
-      {showCheckoutModal && cart.length > 0 && (
-        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white border border-[#e6eef0] w-full max-w-lg rounded-3xl shadow-xl overflow-hidden relative animate-scaleIn">
-            <div className="absolute top-0 inset-x-0 h-1.5 bg-emerald-600" />
-            
-            <div className="p-6">
-              <div className="flex items-center justify-between border-b border-[#f0f6f3] pb-4 mb-4">
-                <h3 className="text-base font-extrabold text-slate-800">Thông tin liên hệ nhận Vé Tour</h3>
-                <button 
-                  onClick={() => setShowCheckoutModal(false)}
-                  className="text-slate-400 hover:text-slate-700 font-bold"
-                >
-                  ✕
-                </button>
-              </div>
-
-              {/* Checkout details summary preview */}
-              <div className="bg-[#f8faf9] border border-[#e2ece7] p-4 rounded-2xl mb-4 space-y-2 text-xs">
-                <div className="font-bold text-slate-700">🛒 Tour đang đăng ký thanh toán:</div>
-                <div className="flex justify-between">
-                  <span className="text-slate-550 text-slate-500">{cart[0].tour.title}</span>
-                  <strong className="text-slate-850 text-slate-800">{cart[0].ticketsCount} vé</strong>
-                </div>
-                <div className="flex justify-between border-t border-[#eff6f3] pt-2 font-bold text-rose-500">
-                  <span>Tổng tiền thanh toán:</span>
-                  <span>{formatPrice(getBookingFinalPrice(cart[0].tour, cart[0].ticketsCount))}</span>
-                </div>
-                {userProfile && cart[0].tour.discountPercent > 0 && (userProfile.membershipType === 'SILVER' || userProfile.membershipType === 'GOLD') && (
-                  <div className="flex justify-between text-[10px] text-emerald-600 font-bold">
-                    <span>Quyền lợi giảm VIP {userProfile.membershipType}:</span>
-                    <span>-{userProfile.membershipType === 'SILVER' ? '3%' : '5%'}</span>
-                  </div>
-                )}
-              </div>
-
-              <form onSubmit={handleCartCheckoutSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Họ và tên của bạn</label>
-                    <input 
-                      type="text"
-                      required
-                      placeholder="Ví dụ: Nguyễn Văn A"
-                      value={checkoutName}
-                      onChange={(e) => setCheckoutName(e.target.value)}
-                      className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Số điện thoại liên hệ</label>
-                    <input 
-                      type="tel"
-                      required
-                      placeholder="Ví dụ: 0987654321"
-                      value={checkoutPhone}
-                      onChange={(e) => setCheckoutPhone(e.target.value)}
-                      className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Địa chỉ Email (Để hệ thống tự động gửi vé/hóa đơn)</label>
-                  <input 
-                    type="email"
-                    required
-                    placeholder="yourname@gmail.com"
-                    value={checkoutEmail}
-                    onChange={(e) => setCheckoutEmail(e.target.value)}
-                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Kênh thanh toán muốn dùng</label>
-                  <select 
-                    value={checkoutPaymentMethod}
-                    onChange={(e) => setCheckoutPaymentMethod(e.target.value)}
-                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors cursor-pointer text-slate-600 font-semibold"
-                  >
-                    <option value="VNPAY">Quét cổng VNPay QR giả lập</option>
-                    <option value="MOMO">Quét ví điện tử MoMo giả lập</option>
-                    <option value="CASH">Thanh toán tiền mặt tại văn phòng</option>
-                  </select>
-                </div>
-
-                <div className="flex justify-end space-x-3 pt-4 border-t border-[#f0f6f3]">
-                  <button 
-                    type="button" 
-                    onClick={() => setShowCheckoutModal(false)}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold px-5 py-2.5 rounded-xl transition-colors"
-                  >
-                    Bỏ qua
-                  </button>
-                  <button 
-                    type="submit"
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-md transition-colors"
-                  >
-                    Xác nhận và đặt vé
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
+      <CheckoutModal
+        isOpen={showCheckoutModal}
+        onClose={() => setShowCheckoutModal(false)}
+        onSubmitCheckout={handleCartCheckoutSubmit}
+      />
 
       {/* POPUP MODAL: Simulated payment redirect checkout QR code page */}
-      {showPaymentSimulator && activeInvoice && (
-        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white border border-[#e6eef0] w-full max-w-md rounded-3xl shadow-xl overflow-hidden relative animate-scaleIn">
-            <div className="absolute top-0 inset-x-0 h-1.5 bg-emerald-500" />
-            
-            <div className="p-6 text-center">
-              <h3 className="text-base font-extrabold text-slate-800">Thanh toán vé du lịch (Cổng giả lập)</h3>
-              <p className="text-slate-400 text-[11px] mt-1">Chụp hình hoặc quét mã chuyển khoản QR của {activeInvoice.paymentMethod}</p>
-
-              {/* QR display simulation */}
-              <div className="my-5 flex justify-center">
-                <div className="bg-white p-3 rounded-2xl border border-[#e2ece7] shadow-md">
-                  <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(mockPaymentUrl)}`}
-                    alt="Simulated Pay QR"
-                    className="w-44 h-44 rounded-lg"
-                  />
-                </div>
-              </div>
-
-              {/* Reservation card metadata */}
-              <div className="bg-[#f8faf9] border border-[#e2ece7] p-4 rounded-2xl text-left space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Mã đơn đặt vé:</span>
-                  <strong className="text-emerald-700">#{activeInvoice.id}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Người đại diện:</span>
-                  <strong className="text-slate-800">{activeInvoice.customerName}</strong>
-                </div>
-                <div className="flex justify-between border-t border-[#eff6f3] pt-2">
-                  <span className="text-slate-555 text-slate-500 font-bold">Tổng số tiền cần quét:</span>
-                  <strong className="text-rose-500 font-black text-sm">{formatPrice(activeInvoice.totalPrice)}</strong>
-                </div>
-                <div className="text-[10px] text-amber-600 bg-amber-50 border border-amber-100 p-2.5 rounded-xl text-center leading-relaxed mt-2 animate-pulse">
-                  ⚠️ Lưu ý: Quá 15 phút không hoàn tất chuyển tiền, hệ thống Scheduler sẽ tự động hủy đơn giữ chỗ này!
-                </div>
-              </div>
-
-              <div className="mt-6 flex flex-col space-y-2">
-                <button 
-                  onClick={() => confirmMockPayment(activeInvoice.id)}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white py-3 rounded-xl shadow-md transition-all"
-                >
-                  Xác nhận tôi đã chuyển khoản thành công
-                </button>
-                <button 
-                  onClick={() => {
-                    setShowPaymentSimulator(false);
-                    setActiveInvoice(null);
-                    triggerNotification('Thanh toán hoãn. Bạn vui lòng hoàn tất trong vòng 15 phút để tránh tự động hủy.', 'error');
-                  }}
-                  className="w-full bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-650 py-3 rounded-xl transition-all"
-                >
-                  Thanh toán sau
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <PaymentSimulatorModal
+        isOpen={showPaymentSimulator}
+        activeInvoice={activeInvoice}
+        mockPaymentUrl={mockPaymentUrl}
+        onConfirm={confirmMockPayment}
+        onClose={handlePaymentSimulatorClose}
+      />
 
       {/* POPUP MODAL: Admin CRUD Tour Edit/Add Screen */}
-      {showTourCrudModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white border border-[#e6eef0] w-full max-w-xl rounded-3xl shadow-xl overflow-hidden relative animate-scaleIn">
-            <div className="absolute top-0 inset-x-0 h-1.5 bg-emerald-650 bg-emerald-600" />
-            
-            <div className="p-6">
-              <div className="flex items-center justify-between border-b border-[#f0f6f3] pb-4 mb-4">
-                <h3 className="text-base font-extrabold text-slate-800">
-                  {crudMode === 'ADD' ? '➕ Khai báo thêm Tour mới' : '✏️ Chỉnh sửa hồ sơ Tour'}
-                </h3>
-                <button 
-                  onClick={() => setShowTourCrudModal(false)}
-                  className="text-slate-400 hover:text-slate-700 font-bold"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <form onSubmit={handleCrudSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Tiêu đề / Tên Tour</label>
-                  <input 
-                    type="text"
-                    required
-                    placeholder="Ví dụ: Tour Du Lịch Đà Lạt - Thành Phố Ngàn Hoa"
-                    value={crudTitle}
-                    onChange={(e) => setCrudTitle(e.target.value)}
-                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Điểm đến</label>
-                    <input 
-                      type="text"
-                      required
-                      placeholder="Ví dụ: Lâm Đồng, Việt Nam"
-                      value={crudDestination}
-                      onChange={(e) => setCrudDestination(e.target.value)}
-                      className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Giá tour (VND)</label>
-                    <input 
-                      type="number"
-                      required
-                      placeholder="Ví dụ: 2500000"
-                      value={crudPrice}
-                      onChange={(e) => setCrudPrice(e.target.value)}
-                      className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ngày khởi hành</label>
-                    <input 
-                      type="date"
-                      required
-                      value={crudDepartureDate}
-                      onChange={(e) => setCrudDepartureDate(e.target.value)}
-                      className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors cursor-pointer text-slate-650"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Tổng số vé trống</label>
-                    <input 
-                      type="number"
-                      required
-                      min="0"
-                      value={crudAvailableSlots}
-                      onChange={(e) => setCrudAvailableSlots(parseInt(e.target.value) || 0)}
-                      className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Đường dẫn ảnh bao phủ (URL Image)</label>
-                  <input 
-                    type="url"
-                    placeholder="URL ảnh https://..."
-                    value={crudImage}
-                    onChange={(e) => setCrudImage(e.target.value)}
-                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Mô tả lịch trình (Text cụ thể)</label>
-                  <textarea 
-                    rows="4"
-                    required
-                    placeholder="Chi tiết chặng đi, các điểm thăm quan, khách sạn ăn uống nghỉ ngơi..."
-                    value={crudItinerary}
-                    onChange={(e) => setCrudItinerary(e.target.value)}
-                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors resize-none"
-                  />
-                </div>
-
-                <div className="flex justify-end space-x-3 pt-4 border-t border-[#f0f6f3]">
-                  <button 
-                    type="button" 
-                    onClick={() => setShowTourCrudModal(false)}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-650 text-xs font-bold px-5 py-2.5 rounded-xl transition-all"
-                  >
-                    Bỏ qua
-                  </button>
-                  <button 
-                    type="submit"
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-md transition-all"
-                  >
-                    Lưu thông tin Tour
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
+      <TourCrudModal
+        isOpen={showTourCrudModal}
+        crudMode={crudMode}
+        tour={crudTour}
+        onClose={() => {
+          setShowTourCrudModal(false);
+          setCrudTour(null);
+        }}
+        onSubmit={handleCrudSubmit}
+      />
 
       {/* POPUP MODAL: Points Adjustment CRM Modal */}
-      {showPointsAdjustModal && adjustingMember && (
-        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white border border-[#e6eef0] w-full max-w-md rounded-3xl shadow-xl overflow-hidden relative animate-scaleIn">
-            <div className="absolute top-0 inset-x-0 h-1.5 bg-emerald-600" />
-            
-            <div className="p-6">
-              <div className="flex items-center justify-between border-b border-[#f0f6f3] pb-4 mb-4">
-                <h3 className="text-base font-extrabold text-slate-800">✏️ Điều chỉnh điểm thành viên</h3>
-                <button 
-                  onClick={() => {
-                    setShowPointsAdjustModal(false);
-                    setAdjustingMember(null);
-                  }}
-                  className="text-slate-400 hover:text-slate-700 font-bold"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="bg-[#f8faf9] border border-[#e2ece7] p-4 rounded-2xl mb-4 text-xs">
-                <div>Thành viên: <strong>{adjustingMember.fullName}</strong> (Username: <span className="font-mono">{adjustingMember.username}</span>)</div>
-                <div className="mt-1">Hạng thẻ hiện tại: <strong className="text-emerald-700">{adjustingMember.membershipType}</strong></div>
-                <div className="mt-1">Số điểm khả dụng: <strong className="text-emerald-700">{adjustingMember.currentPoints} pts</strong></div>
-              </div>
-
-              <form onSubmit={handleAdjustPointsSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Số điểm thay đổi (Có thể nhập số âm hoặc dương)</label>
-                  <input 
-                    type="number"
-                    required
-                    placeholder="Ví dụ: 500 hoặc -200"
-                    value={adjustPointsChange}
-                    onChange={(e) => setAdjustPointsChange(e.target.value)}
-                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors"
-                  />
-                  <p className="text-[9px] text-slate-400 mt-1">Lưu ý: Điểm khả dụng sau khi trừ không bao giờ âm (nhỏ nhất là 0). Tự động cập nhật hạng VIP.</p>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Lý do điều chỉnh</label>
-                  <textarea 
-                    rows="3"
-                    required
-                    placeholder="Nhập lý do điều chỉnh điểm..."
-                    value={adjustReason}
-                    onChange={(e) => setAdjustReason(e.target.value)}
-                    className="w-full bg-[#f8faf9] border border-[#e2ece7] focus:border-emerald-500 rounded-xl px-4 py-2.5 text-xs outline-none transition-colors resize-none"
-                  />
-                </div>
-
-                <div className="flex justify-end space-x-3 pt-4 border-t border-[#f0f6f3]">
-                  <button 
-                    type="button" 
-                    onClick={() => {
-                      setShowPointsAdjustModal(false);
-                      setAdjustingMember(null);
-                    }}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-650 text-xs font-bold px-5 py-2.5 rounded-xl transition-all"
-                  >
-                    Hủy
-                  </button>
-                  <button 
-                    type="submit"
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-md transition-all"
-                  >
-                    Xác nhận thay đổi
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
+      <PointsAdjustModal
+        isOpen={showPointsAdjustModal}
+        member={adjustingMember}
+        onClose={() => {
+          setShowPointsAdjustModal(false);
+          setAdjustingMember(null);
+        }}
+        onSubmit={handleAdjustPointsSubmit}
+      />
 
       {/* POPUP MODAL: Member Point History Audit Log */}
-      {showHistoryModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white border border-[#e6eef0] w-full max-w-lg rounded-3xl shadow-xl overflow-hidden relative animate-scaleIn">
-            <div className="absolute top-0 inset-x-0 h-1.5 bg-emerald-600" />
-            
-            <div className="p-6">
-              <div className="flex items-center justify-between border-b border-[#f0f6f3] pb-4 mb-4">
-                <h3 className="text-base font-extrabold text-slate-800">📜 Lịch sử thay đổi điểm (Audit Log)</h3>
-                <button 
-                  onClick={() => setShowHistoryModal(false)}
-                  className="text-slate-400 hover:text-slate-700 font-bold"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="max-h-96 overflow-y-auto space-y-3">
-                {selectedMemberHistory.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-slate-400">Thành viên chưa có lịch sử biến động điểm.</div>
-                ) : (
-                  selectedMemberHistory.map((log) => (
-                    <div key={log.id} className="bg-[#f8faf9] border border-[#e2ece7] p-3.5 rounded-2xl flex justify-between items-start text-xs animate-scaleIn">
-                      <div className="space-y-1 pr-4 text-left">
-                        <div className="font-bold text-slate-700">{log.reason}</div>
-                        <div className="text-[10px] text-slate-400">
-                          {new Date(log.createdAt).toLocaleString('vi-VN')}
-                        </div>
-                      </div>
-                      <span className={`font-black text-sm px-2 py-0.5 rounded-lg flex-shrink-0 ${
-                        log.pointsChange > 0 
-                          ? 'bg-emerald-50 text-emerald-700' 
-                          : 'bg-rose-50 text-rose-700'
-                      }`}>
-                        {log.pointsChange > 0 ? `+${log.pointsChange}` : log.pointsChange} pts
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div className="flex justify-end pt-4 border-t border-[#f0f6f3] mt-4">
-                <button 
-                  onClick={() => setShowHistoryModal(false)}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-6 py-2.5 rounded-xl transition-all shadow-md"
-                >
-                  Đóng lịch sử
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <HistoryModal
+        isOpen={showHistoryModal}
+        history={selectedMemberHistory}
+        onClose={() => setShowHistoryModal(false)}
+      />
 
       {/* Global minimal footer */}
-      <footer className="mt-24 border-t border-[#e6eef0] pt-12 text-center text-xs text-slate-400 space-y-2">
-        <div>© 2026 E-Tour Booking System. Cung cấp giải pháp Thương mại Điện tử cao cấp chuẩn quốc tế.</div>
-        <div className="flex justify-center space-x-5">
-          <a href="#" className="hover:text-emerald-700 transition-colors">Quy định chung</a>
-          <a href="#" className="hover:text-emerald-700 transition-colors">Bảo mật thông tin</a>
-          <a href="#" className="hover:text-emerald-700 transition-colors">Hotline 1900-ETOUR</a>
-        </div>
-      </footer>
+      <Footer />
+
+      {/* Floating utility widgets (bottom right) */}
+      <FloatingContact />
+      <BackToTop />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AppProvider>
+      <AppContent />
+    </AppProvider>
   );
 }
